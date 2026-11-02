@@ -27,6 +27,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Test Suite with Pytest & Unittest
+        env:
+          PYTHONPATH: .
         run: |
           python -m unittest discover -s tests -p "test_*.py"
           pytest -v tests/test_bot_suite.py --junitxml=test-results.xml

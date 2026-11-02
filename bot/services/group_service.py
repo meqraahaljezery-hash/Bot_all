@@ -86,5 +86,42 @@ class GroupService:
         """
         return [g for g in self._groups.values() if g.get("teacher_id") == teacher_id]
 
+    def generate_student_code(self, gender: str) -> str:
+        """
+        Generates student code: IM-XXXX for male, IF-XXXX for female.
+        """
+        prefix = "IM" if gender == "male" else "IF"
+        count = sum(1 for m in self._group_members if m.get("gender") == gender) + 1001
+        return f"{prefix}-{count}"
+
+    def restrict_student(self, student_id: str, reason: str = "نفاد الرصيد وعدم التجديد") -> bool:
+        """
+        Restricts student from typing, media, and voice chats in their Telegram group.
+        """
+        for m in self._group_members:
+            if m["student_id"] == student_id:
+                m["status"] = "restricted"
+                m["restriction_reason"] = reason
+                return True
+        return False
+
+    def unrestrict_student(self, student_id: str) -> bool:
+        """
+        Lifts restriction and restores full Telegram group participation permissions upon recharge/borrowing.
+        """
+        for m in self._group_members:
+            if m["student_id"] == student_id:
+                m["status"] = "active"
+                m.pop("restriction_reason", None)
+                return True
+        return False
+
+    def is_student_restricted(self, student_id: str) -> bool:
+        for m in self._group_members:
+            if m["student_id"] == student_id:
+                return m.get("status") == "restricted"
+        return False
+
 
 group_service = GroupService()
+

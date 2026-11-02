@@ -5,6 +5,7 @@ export type UserRole = 'super_admin' | 'admin' | 'supervisor' | 'teacher' | 'stu
 export interface User {
   id: string;
   telegram_id: number;
+  student_code?: string; // IM-XXXX for male, IF-XXXX for female
   username?: string;
   first_name: string;
   last_name?: string;
@@ -19,6 +20,7 @@ export interface User {
 
 export interface StudentProfile {
   user_id: string;
+  student_code?: string;
   full_name: string;
   age: string;
   gender: 'male' | 'female';
@@ -47,13 +49,16 @@ export interface EducationalProgram {
   display_order: number;
 }
 
+export type StudyShift = 'morning' | 'afternoon' | 'night' | 'evening';
+
 export interface RegistrationApplication {
   id: string;
   user_id: string;
+  student_code?: string; // e.g. IM-1001 or IF-1001
   student_name: string;
   telegram_id: number;
   program_id: string;
-  shift: 'morning' | 'evening';
+  shift: StudyShift;
   gender: 'male' | 'female';
   country: string;
   city: string;
@@ -66,6 +71,7 @@ export interface RegistrationApplication {
   status: 'pending' | 'approved' | 'rejected' | 'needs_modification';
   rejection_reason?: string;
   assigned_group_id?: string;
+  assigned_telegram_link?: string;
   created_at: string;
 }
 
@@ -94,6 +100,7 @@ export interface PaymentMethodConfig {
 export interface PaymentRequest {
   id: string;
   user_id: string;
+  student_code?: string;
   student_name: string;
   telegram_id: number;
   package_id: string;
@@ -118,7 +125,7 @@ export interface BalanceLedgerEntry {
   id: string;
   user_id: string;
   student_name: string;
-  type: 'purchase' | 'session_deduction' | 'bonus' | 'admin_addition' | 'admin_deduction';
+  type: 'purchase' | 'session_deduction' | 'bonus' | 'admin_addition' | 'admin_deduction' | 'emergency_borrow';
   minutes_change: number;
   balance_before: number;
   balance_after: number;
@@ -129,26 +136,39 @@ export interface BalanceLedgerEntry {
 
 export interface StudentBalance {
   user_id: string;
+  student_code?: string; // IM-XXXX or IF-XXXX
   student_name: string;
   telegram_id: number;
   current_minutes: number;
   total_purchased: number;
   total_consumed: number;
   total_bonus: number;
+  is_restricted?: boolean; // Restricted/muted in Telegram group due to zero balance
+  restriction_reason?: string;
+  restricted_at?: string;
+  assigned_group_id?: string;
+  assigned_group_name?: string;
+  assigned_telegram_link?: string;
+  borrowed_minutes?: number; // Minutes borrowed if requested
 }
 
 export interface QuranGroup {
   id: string;
   name: string;
+  group_code?: string; // IM_MORNING, IM_AFTERNOON, IM_NIGHT, IF_MORNING, IF_AFTERNOON, IF_NIGHT, FORUM_MEN, FORUM_WOMEN, FORUM_CENTER
+  telegram_chat_id?: string; // Numeric ID: -100...
   program_id: string;
   program_name: string;
   teacher_id: string;
   teacher_name: string;
-  gender: 'male' | 'female';
-  shift: 'morning' | 'evening';
+  gender: 'male' | 'female' | 'all';
+  shift: StudyShift | 'all';
+  shift_time?: string; // e.g. "09:00 - 12:00"
   current_members_count: number;
   max_members: number;
   telegram_invite_link?: string;
+  is_general_forum?: boolean;
+  bot_is_admin?: boolean;
   is_active: boolean;
 }
 
@@ -178,3 +198,44 @@ export interface AuditLog {
   details: string;
   timestamp: string;
 }
+
+export type NotificationCategory = 'lesson_reminder' | 'payment_reminder' | 'exam_alert' | 'general';
+export type NotificationTargetType = 'all_students' | 'specific_group' | 'low_balance_students' | 'specific_program';
+export type NotificationScheduleType = 'before_lesson' | 'recurring_daily' | 'recurring_weekly' | 'low_balance_auto' | 'one_time';
+
+export interface ScheduledNotification {
+  id: string;
+  title: string;
+  category: NotificationCategory;
+  message_template: string;
+  target_type: NotificationTargetType;
+  target_group_id?: string;
+  target_program_id?: string;
+  low_balance_threshold?: number;
+  schedule_type: NotificationScheduleType;
+  scheduled_time?: string; // e.g. "17:45" or specific ISO datetime
+  lead_time_minutes?: number; // e.g. 15, 30, 60 minutes before
+  days_of_week?: number[]; // [0 = Sun, 1 = Mon, ...]
+  action_button_text?: string;
+  action_button_url?: string;
+  status: 'active' | 'paused' | 'completed';
+  last_sent_at?: string;
+  next_run_at?: string;
+  total_dispatched_count: number;
+  created_at: string;
+  created_by: string;
+}
+
+export interface NotificationDispatchLog {
+  id: string;
+  notification_id: string;
+  notification_title: string;
+  category: NotificationCategory;
+  sent_at: string;
+  recipients_count: number;
+  success_count: number;
+  failed_count: number;
+  channel: string;
+  message_snippet: string;
+}
+

@@ -30,6 +30,7 @@ export type NavTab =
   | 'users'
   | 'teachers'
   | 'supervisors'
+  | 'notifications'
   | 'announcements'
   | 'support'
   | 'audit'
@@ -74,6 +75,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'payment_methods' as NavTab, label: 'حسابات وطرق الدفع', icon: Building2 },
     { id: 'users' as NavTab, label: 'سجل المستخدمين', icon: GraduationCap },
     { id: 'supervisors' as NavTab, label: 'المشرفون والصلاحيات', icon: ShieldAlert },
+    {
+      id: 'notifications' as NavTab,
+      label: 'جدولة الإشعارات والتنبيهات',
+      icon: Bell,
+      badge: 'آلي',
+      badgeColor: 'bg-emerald-100 text-[#105C3B] border border-emerald-300',
+    },
     { id: 'announcements' as NavTab, label: 'الرسائل الجماعية', icon: Megaphone },
     {
       id: 'support' as NavTab,

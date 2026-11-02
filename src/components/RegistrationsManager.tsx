@@ -51,13 +51,19 @@ export const RegistrationsManager: React.FC<RegistrationsManagerProps> = ({
 
   const handleOpenApproveModal = (reg: RegistrationApplication) => {
     setSelectedReg(reg);
-    // Find matching group by gender and shift
+    // Find matching group by gender and shift among official 6 groups
     const matching = groups.find(
       (g) =>
         g.is_active &&
+        !g.is_general_forum &&
         g.gender === reg.gender &&
         g.shift === reg.shift &&
         g.current_members_count < g.max_members
+    ) || groups.find(
+      (g) =>
+        g.is_active &&
+        !g.is_general_forum &&
+        g.gender === reg.gender
     );
     setSelectedGroupId(matching ? matching.id : groups[0]?.id || '');
     setIsApproving(true);
@@ -182,8 +188,13 @@ export const RegistrationsManager: React.FC<RegistrationsManagerProps> = ({
 
                   return (
                     <tr key={reg.id} className="hover:bg-stone-50/80 transition-colors">
-                      <td className="py-3.5 px-4 font-mono font-bold text-xs text-stone-700">
-                        {reg.id}
+                      <td className="py-3.5 px-4">
+                        <div className="font-mono font-bold text-xs text-stone-700">{reg.id}</div>
+                        {reg.student_code && (
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 bg-emerald-50 text-[#105C3B] rounded border border-emerald-200">
+                            {reg.student_code}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-semibold text-stone-900">{reg.student_name}</div>
@@ -193,9 +204,18 @@ export const RegistrationsManager: React.FC<RegistrationsManagerProps> = ({
                         {prog ? prog.name_ar : reg.program_id}
                       </td>
                       <td className="py-3.5 px-4 text-xs text-stone-600">
-                        <span>{reg.gender === 'male' ? '👨 رجال' : '👩 نساء'}</span>
-                        <span className="mx-1">•</span>
-                        <span>{reg.shift === 'morning' ? '🌅 صباحية' : '🌆 مسائية'}</span>
+                        <div className="font-semibold">
+                          {reg.gender === 'male' ? '👨 رجال (IM)' : '👩 نساء (IF)'}
+                        </div>
+                        <div className="text-[11px] text-stone-500">
+                          {reg.shift === 'morning'
+                            ? '🌅 صباحية (9-12)'
+                            : reg.shift === 'afternoon'
+                            ? '☀️ مسائية (2-3:30)'
+                            : reg.shift === 'night'
+                            ? '🌙 ليلية (9-11)'
+                            : 'مسائية'}
+                        </div>
                       </td>
                       <td className="py-3.5 px-4 text-xs text-stone-600">
                         {reg.country} - {reg.city}

@@ -6,7 +6,15 @@ Compatible with standard python3 -m unittest and pytest.
 
 import unittest
 import os
+import sys
 import uuid
+from pathlib import Path
+
+# Ensure root workspace is in sys.path for pytest and unittest discovery
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from bot.locales.i18n import t, load_translations
 from bot.services.user_service import UserService
 from bot.services.ledger_service import LedgerService

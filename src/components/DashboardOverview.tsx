@@ -11,6 +11,7 @@ import {
   ArrowUpRight,
   ShieldCheck,
   TrendingUp,
+  Bell,
 } from 'lucide-react';
 import {
   User,
@@ -146,6 +147,36 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <div className="text-xs text-stone-500 mt-1">{totalTeachers} مشايخ معلمين</div>
         </div>
 
+      </div>
+
+      {/* Automated Bot Notifications Banner */}
+      <div className="bg-white rounded-xl border border-stone-200 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-[#105C3B] flex items-center justify-center shrink-0 border border-emerald-100">
+            <Bell className="w-5 h-5 animate-bounce" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-stone-900 font-['Amiri',serif]">
+                جدولة الإشعارات والتنبيهات التلقائية للبوت (Automated Push)
+              </h3>
+              <span className="text-[10px] bg-emerald-100 text-[#105C3B] font-bold px-2 py-0.5 rounded-full">
+                نشط وآلي
+              </span>
+            </div>
+            <p className="text-xs text-stone-500 mt-0.5">
+              إرسال تذكيرات مواعيد الحلقات للطلاب قبل 30 دقيقة، وتنبيهات شحن الرصيد المنخفض تلقائياً عبر التيليجرام
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => onNavigate('notifications')}
+          className="self-start sm:self-auto flex items-center gap-1.5 bg-[#105C3B] hover:bg-[#18794E] text-white px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+        >
+          <span>إدارة قواعد الإشعارات</span>
+          <ArrowUpRight className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       {/* Two Columns: Actionable Pending Lists */}

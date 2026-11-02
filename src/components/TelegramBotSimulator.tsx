@@ -13,8 +13,13 @@ import {
   MessageSquare,
   Globe,
   ChevronLeft,
+  VolumeX,
+  Volume2,
+  Zap,
+  Bell,
+  ExternalLink,
 } from 'lucide-react';
-import { Language } from '../types';
+import { Language, StudyShift } from '../types';
 
 interface MessageItem {
   id: string;
@@ -30,14 +35,37 @@ export const TelegramBotSimulator: React.FC = () => {
   const [currentLang, setCurrentLang] = useState<Language>('ar');
   const [userRole, setUserRole] = useState<'student' | 'admin'>('student');
   const [balance, setBalance] = useState<number>(240);
+  const [studentCode, setStudentCode] = useState<string>('IM-1001');
+  const [studentGender, setStudentGender] = useState<'male' | 'female'>('male');
   const [hasGroup, setHasGroup] = useState<boolean>(true);
+  const [isRestricted, setIsRestricted] = useState<boolean>(false);
+  const [borrowedMinutes, setBorrowedMinutes] = useState<number>(0);
+
+  // Group Details
+  const [groupInfo, setGroupInfo] = useState({
+    code: 'IM_MORNING',
+    name: 'حلقة الذكور - الفترة الصباحية (IM Morning)',
+    chatId: '-1003701915037',
+    link: 'https://t.me/IM_MORNING_2',
+    shift: 'morning',
+    shiftTime: '09:00 ص - 12:00 م',
+    teacher: 'الشيخ إسماعيل الأثيوبي',
+  });
+
+  // Interactive Registration FSM state
   const [regStep, setRegStep] = useState<number>(0);
-  const [regData, setRegData] = useState<Record<string, string>>({});
+  const [regData, setRegData] = useState<{
+    name?: string;
+    gender?: 'male' | 'female';
+    shift?: StudyShift;
+    program?: string;
+    country?: string;
+    phone?: string;
+  }>({});
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Initial /start sequence
     restartBot();
   }, [currentLang]);
 
@@ -151,7 +179,67 @@ export const TelegramBotSimulator: React.FC = () => {
           time: getTimeString(),
         },
       ]);
-    }, 350);
+    }, 280);
+  };
+
+  // Quick Action Triggers
+  const simulateMorningLessonReminder = () => {
+    addBotMessage(
+      `🔔 *إشعار موعد الفترة الصباحية (09:00 ص - 12:00 م)*\n\n🌿 أقبلوا إلى مائدة القرآن ونور الفرقان... يا أهل القرآن وخاصته 📖✨\n\nنذكركم بأن موعد حلقتكم الصباحية المباركة قد اقترب.\nأخلصوا النوايا، وتطيبوا بذكر الله، وافتحوا قلوبكم ومصاحفكم لكلام رب العالمين.\n\n🎙️ مع مشايخ ومقرئي مقرأة الإمام الجزري الفضلاء.\nوفقكم الله للعلم والعمل والارتقاء.`,
+      [
+        { label: '🔗 الانضمام للحلقة الصباحية', action: () => addBotMessage(`تم توجيهك إلى: ${groupInfo.link}`) },
+      ]
+    );
+  };
+
+  const simulateAfternoonLessonReminder = () => {
+    addBotMessage(
+      `🔔 *إشعار موعد الفترة المسائية (02:00 م - 03:30 م)*\n\n✨ طوبى لمن جعل القرآن ربيعه وأنيسه... تذكرة موعد حلقتكم المسائية المباركة 🌺\n\nنحيطكم علماً بأن موعد انعقاد حلقة التلاوة والتسميع سيبدأ بعد قليل.\nجددوا العهد مع كتاب الله، وأقبلوا إلى مجالس الذكر والسكينة، وتهيأوا لمراجعة محفوظكم بكل سكينة وإتقان.\n\n📖 قال رسول الله ﷺ: «خيركم من تعلم القرآن وعلمه».`,
+      [
+        { label: '🎙️ دخول القاعة المسائية', action: () => addBotMessage(`تم توجيهك إلى: ${groupInfo.link}`) },
+      ]
+    );
+  };
+
+  const simulateNightLessonReminder = () => {
+    addBotMessage(
+      `🔔 *إشعار موعد الفترة الليلية (09:00 م - 11:00 م)*\n\n🌙 ليل القانتين وراحة الذاكرين... نداء الهدى والبركة 🌟\n\nأحبابنا طلاب وطالبات مقرأة الإمام الجزري، نذكركم بانعقاد حلقتكم الليلية المباركة.\nاختموا يومكم بآيات بينات تتلى، وتطمئن بها القلوب، وتتنزل بها الملائكة والسكينة والرحمة.\n\n🎙️ أعدوا مصاحفكم وجهزوا تلاوتكم، وجعلكم الله من أهل القرآن الذين هم أهل الله وخاصته.`,
+      [
+        { label: '🌙 الانضمام للمجلس الليلي', action: () => addBotMessage(`تم توجيهك إلى: ${groupInfo.link}`) },
+      ]
+    );
+  };
+
+  const simulateZeroBalanceMute = () => {
+    setBalance(0);
+    setIsRestricted(true);
+    addBotMessage(
+      `⚠️ *تنبيه خاص بالرصيد والتقييد بمقرأة الإمام الجزري*\n\nأخي الطالب بلال حسين (كود: \`${studentCode}\`)،\n\nلقد نفد رصيدك التعليمي المتاح (*0 دقيقة*).\n\n🔇 *الإجراء الإشرافي المتخذ:* قام بوت المقرأة بتقييدك في مجموعة التيليجرام (${groupInfo.name})، ومنع إرسال الرسائل والمشاركة الصوتية لحين تجديد الباقة.\n\n💡 *خياراتك الآن:*\n1. شحن باقة دقائق جديدة عبر الحسابات الرسمية.\n2. طلب استلاف رصيد طوارئ (+30 دقيقة) لرفع الحظر فوراً والاستمرار في الحضور.`,
+      [
+        { label: '⚡ طلب استلاف طوارئ (+30 دقيقة)', action: () => handleEmergencyBorrow() },
+        { label: '💳 شحن باقة دقائق الآن', action: () => handleCommand('/packages') },
+        { label: '👥 فحص حالة مجموعتي', action: () => handleCommand('/mygroup') },
+      ]
+    );
+  };
+
+  const handleEmergencyBorrow = () => {
+    setBalance((prev) => prev + 30);
+    setBorrowedMinutes((prev) => prev + 30);
+    setIsRestricted(false);
+    addBotMessage(
+      `✅ *تم اعتماد طلب استلاف رصيد الطوارئ بنجاح!*\n\n⏱ أضيفت لك: *30 دقيقة* تعليمية صالحة لحضور الحصص القادمة.\n🟢 رصيدك الحالي: *${balance + 30} دقيقة*\n\n🔓 *رفع التقييد:* قام البوت تلقائياً برفع الحظر في مجموعة التيليجرام (${groupInfo.name})، واستعدت كامل صلاحيات الكتابة والمشاركة في البث الصوتي.\n\nيرجى تسوية الرصيد عند أول شحن لباقة جديدة.`,
+      getMainButtons()
+    );
+  };
+
+  const handleTopUpSuccess = () => {
+    setBalance((prev) => prev + 300);
+    setIsRestricted(false);
+    addBotMessage(
+      `🎉 *تم اعتماد شحن باقة 300 دقيقة بنجاح!*\n\n💰 المبلغ: 1470 ETB عبر CBE\n🟢 رصيدك الجديد: *${balance + 300} دقيقة*\n\n🔓 تم تفعيل وتأكيد كامل صلاحياتك في المجموعة والحلقات الصوتية. نسأل الله لك التوفيق والبركة.`,
+      getMainButtons()
+    );
   };
 
   const handleCommand = (cmd: string) => {
@@ -164,7 +252,7 @@ export const TelegramBotSimulator: React.FC = () => {
 
     if (cmd === '/about') {
       addBotMessage(
-        `🌿 *مقرأة الإمام الجزري للإقراء والإجازة بالسند*\n\nالمقرأة مؤسسة قرآنية رائدة تهدف إلى:\n• تعليم القرآن الكريم تلاوةً وحفظاً وتدبراً.\n• تصحيح الأداء ومخارج الحروف على أصول القراءات.\n• منح الإجازات بالسند المتصل لنخبة الطلاب المتقنين.\n\n📞 الهاتف المعتمد: 0990161372\n📧 البريد المعتمد: kalidahd7@gmil.com`,
+        `🌿 *مقرأة الإمام الجزري للإقراء والإجازة بالسند*\n\nالمقرأة مؤسسة قرآنية رائدة تهدف إلى:\n• تعليم القرآن الكريم تلاوةً وحفظاً وتدبراً.\n• تصحيح الأداء ومخارج الحروف على أصول القراءات.\n• منح الإجازات بالسند المتصل لنخبة الطلاب المتقنين.\n\n🛡️ *إشراف المجموعات الست:* البوت مشرف معتمد في المجموعات الست لجدولة التذكيرات ومتابعة الرصيد التعليمي.\n\n📞 الهاتف المعتمد: 0990161372\n📧 البريد المعتمد: kalidahd7@gmil.com`,
         getMainButtons()
       );
       return;
@@ -198,8 +286,16 @@ export const TelegramBotSimulator: React.FC = () => {
 
     if (cmd === '/balance') {
       addBotMessage(
-        `⏱ *رصيدي من الدقائق*\n\n👤 الطالب: بلال حسين\n🟢 الرصيد الحالي المتاح: *${balance} دقيقة*\n\n📊 *الإحصائيات المالية:*\n• إجمالي المشتراة: 300 دقيقة\n• إجمالي المستهلكة: 60 دقيقة\n• رصيد المكافآت: 0 دقيقة\n\n📜 *آخر الحركات المسجلة:*\n• 2026-10-25 | -60 دقيقة | خصم حصة تسميع سورة البقرة\n• 2026-10-22 | +300 دقيقة | اعتماد شراء باقة عبر CBE`,
-        getMainButtons()
+        `⏱ *رصيدي من الدقائق*\n\n👤 الطالب: بلال حسين\n🏷️ كود الطالب: \`${studentCode}\`\n🟢 الرصيد الحالي المتاح: *${balance} دقيقة*${
+          isRestricted ? '\n⚠️ *حالة المجموعة: مقيد لنفاد الرصيد (0 دقيقة)*' : '\n✅ *حالة المجموعة: نشط ومصرح بالمشاركة*'
+        }\n\n📊 *الإحصائيات المالية:*\n• إجمالي المشتراة: 300 دقيقة\n• إجمالي المستهلكة: ${300 - balance} دقيقة\n• رصيد مستلف: ${borrowedMinutes} دقيقة\n\n📜 *آخر الحركات المسجلة:*\n• 2026-11-01 | فحص حالة الرصيد الآلي\n• 2026-10-25 | -60 دقيقة | خصم حصة تسميع سورة البقرة\n• 2026-10-22 | +300 دقيقة | اعتماد باقة عبر CBE`,
+        [
+          ...(isRestricted
+            ? [{ label: '⚡ استلاف طوارئ 30 دقيقة', action: () => handleEmergencyBorrow() }]
+            : []),
+          { label: '💳 شحن باقة دقائق', action: () => handleCommand('/packages') },
+          { label: '⬅️ القائمة الرئيسية', action: () => addBotMessage('الرئيسية:', getMainButtons()) },
+        ]
       );
       return;
     }
@@ -207,9 +303,16 @@ export const TelegramBotSimulator: React.FC = () => {
     if (cmd === '/mygroup') {
       if (hasGroup) {
         addBotMessage(
-          `👥 *حلقتك القرآنية*\n\n🌿 الحلقة: *حلقة الإمام الشاطبي (حفظ مكثف - رجال)*\n📚 البرنامج: الحفظ المكثف\n👨‍🏫 المعلم المشرف: الشيخ إسماعيل الأثيوبي\n🕒 الفترة: صباحية\n👥 المقاعد: 8 / 15 طالب\n\n🔗 رابط التيليجرام الرسمي للحلقة مفعل ومحمي لطلاب هذه الحلقة فقط:`,
+          `👥 *حلقتك ومجموعتك الرسمية في تيليجرام*\n\n🌿 الحلقة: *${groupInfo.name}*\n🏷️ كود المجموعة: \`${groupInfo.code}\`\n🔢 معرف التيليجرام: \`${groupInfo.chatId}\`\n🕒 الفترة: *${groupInfo.shiftTime}*\n👨‍🏫 المقرئ المشرف: *${groupInfo.teacher}*\n\n🛡️ *إشراف البوت:* نشط مع كامل الصلاحيات.\n${
+            isRestricted
+              ? '❌ *حالتك في المجموعة: مقيد وممنوع من الكتابة والبث الصوتي (نفد رصيدك).* يرجى الشحن أو الاستلاف فوراً.'
+              : '✅ *حالتك في المجموعة: عضو مصرح له بالمشاركة والتسميع الصوتي.*'
+          }\n\n🔗 الرابط الرسمي المخصص لحلقتك:`,
           [
-            { label: '🔗 دخول مجموعة تيليجرام الحلقة', action: () => addBotMessage('تم توجيهك لرابط مجموعة التيليجرام الرسمية.') },
+            { label: '🔗 دخول مجموعة تيليجرام الحلقة', action: () => addBotMessage(`رابط مجموعتك هو: ${groupInfo.link}`) },
+            ...(isRestricted
+              ? [{ label: '⚡ استلاف طوارئ (+30 دقيقة)', action: () => handleEmergencyBorrow() }]
+              : []),
             { label: '⬅️ القائمة الرئيسية', action: () => addBotMessage('الرئيسية:', getMainButtons()) },
           ]
         );
@@ -236,18 +339,19 @@ export const TelegramBotSimulator: React.FC = () => {
     if (cmd === '/register') {
       setRegStep(1);
       addBotMessage(
-        `📝 *بدء التسجيل والالتحاق بمقرأة الإمام الجزري*\n\n1️⃣ أدخل اسمك الكامل الثلاثي كما ترغب أن يظهر في سجلات الإجازة:`
+        `📝 *بدء التسجيل والالتحاق بمقرأة الإمام الجزري*\n\n1️⃣ أدخل اسمك الكامل الثلاثي كما ترغب أن يظهر في سجلات الإجازة والسند:`
       );
       return;
     }
 
     if (cmd === '/admin') {
       addBotMessage(
-        `🛡 *لوحة الإدارة المركزية لمقرأة الإمام الجزري*\n\nمرحباً بك يا فضيلة الشيخ خالد أحمد (المدير العام).\nصلاحياتك: غير مقيدة (Super Admin).\n\nاختر القسم المطلوب:`,
+        `🛡 *لوحة الإدارة المركزية لمقرأة الإمام الجزري*\n\nمرحباً بك يا فضيلة الشيخ خالد أحمد (المدير العام).\nالمعرف: \`7334314796\`\nصلاحياتك: غير مقيدة (Super Admin).\n\nالمجموعات الخاضعة للإشراف: 6 مجموعات دراسية + 3 ملتقيات عامة.\nاختر الإجراء المطلوب:`,
         [
-          { label: '📝 مراجعة التسجيلات (1)', action: () => addBotMessage('طلب معلق: أحمد صالح - إجازة حفص - السعودية.\nالإجراء: [قبول وتعيين] أو [رفض مع سبب]') },
-          { label: '💳 مراجعة المدفوعات (1)', action: () => addBotMessage('طلب دفع معلق: زينب عبد الله (500 ETB / 100 دقيقة).\nالمرجع: TB-7766110022 عبر Telebirr.\nالإجراء: [اعتماد ذري] أو [رفض مع سبب]') },
-          { label: '⏱ إضافة/خصم دقائق', action: () => addBotMessage('أدخل معرف الطالب وعدد الدقائق والسبب الإلزامي.') },
+          { label: '👥 المجموعات والتقييد الآلي', action: () => addBotMessage('المجموعات الست نشطة. الطلاب ذوو رصيد 0 دقيقة يتم تقييدهم آلياً مع خيار فك التقييد أو الاستلاف.') },
+          { label: '🔔 بث تذكير الصباح (09:00)', action: () => simulateMorningLessonReminder() },
+          { label: '🔔 بث تذكير المساء (14:00)', action: () => simulateAfternoonLessonReminder() },
+          { label: '🔔 بث تذكير الليل (21:00)', action: () => simulateNightLessonReminder() },
           { label: '⬅️ القائمة الرئيسية', action: () => addBotMessage('الرئيسية:', getMainButtons()) },
         ]
       );
@@ -310,6 +414,143 @@ export const TelegramBotSimulator: React.FC = () => {
     );
   };
 
+  // Multi-step registration flow with Gender (IM/IF), 3 Shifts, and Group routing
+  const handleGenderSelection = (gender: 'male' | 'female') => {
+    addUserMessage(gender === 'male' ? '👨 ذكر (IM)' : '👩 أنثى (IF)');
+    setRegData((prev) => ({ ...prev, gender }));
+    setStudentGender(gender);
+    setRegStep(3);
+
+    addBotMessage(
+      `3️⃣ اختر الفترة الدراسية المناسبة لك (تتوفر 3 فترات يومياً):`,
+      [
+        { label: '🌅 صباحية (09:00 - 12:00)', action: () => handleShiftSelection('morning') },
+        { label: '☀️ مسائية (02:00 - 03:30)', action: () => handleShiftSelection('afternoon') },
+        { label: '🌙 ليلية (09:00 - 11:00)', action: () => handleShiftSelection('night') },
+      ]
+    );
+  };
+
+  const handleShiftSelection = (shift: StudyShift) => {
+    const shiftLabel =
+      shift === 'morning'
+        ? '🌅 صباحية (09:00 - 12:00)'
+        : shift === 'afternoon'
+        ? '☀️ مسائية (02:00 - 03:30)'
+        : '🌙 ليلية (09:00 - 11:00)';
+
+    addUserMessage(shiftLabel);
+    setRegData((prev) => ({ ...prev, shift }));
+    setRegStep(4);
+
+    addBotMessage(
+      `4️⃣ اختر البرنامج التعليمي المطلوب:`,
+      [
+        { label: 'الحفظ المكثف', action: () => handleProgramSelection('الحفظ المكثف') },
+        { label: 'التلقين وتصحيح الأداء', action: () => handleProgramSelection('التلقين وتصحيح الأداء') },
+        { label: 'الإجازة برواية حفص', action: () => handleProgramSelection('الإجازة برواية حفص') },
+      ]
+    );
+  };
+
+  const handleProgramSelection = (program: string) => {
+    addUserMessage(program);
+    setRegData((prev) => ({ ...prev, program }));
+    setRegStep(5);
+    addBotMessage(`5️⃣ أدخل دولتك ومدينتك ورقم هاتفك للتواصل:`);
+  };
+
+  const handleCompleteRegistration = (contactInfo: string) => {
+    addUserMessage(contactInfo);
+    
+    // Generate deterministic code and assign group
+    const gender = regData.gender || 'male';
+    const shift = regData.shift || 'morning';
+    const prefix = gender === 'male' ? 'IM' : 'IF';
+    const newCode = `${prefix}-1005`;
+
+    const groupRoutingMap = {
+      'male-morning': {
+        code: 'IM_MORNING',
+        name: 'حلقة الذكور - الفترة الصباحية (IM Morning)',
+        chatId: '-1003701915037',
+        link: 'https://t.me/IM_MORNING_2',
+        shift: 'morning',
+        shiftTime: '09:00 ص - 12:00 م',
+        teacher: 'الشيخ إسماعيل الأثيوبي',
+      },
+      'male-afternoon': {
+        code: 'IM_AFTERNOON',
+        name: 'حلقة الذكور - الفترة المسائية (IM Afternoon)',
+        chatId: '-1003954336712',
+        link: 'https://t.me/IM_AFTERNOON_3',
+        shift: 'afternoon',
+        shiftTime: '02:00 م - 03:30 م',
+        teacher: 'فضيلة الشيخ خالد أحمد',
+      },
+      'male-night': {
+        code: 'IM_NIGHT',
+        name: 'حلقة الذكور - الفترة الليلية (IM Night)',
+        chatId: '-1003771613278',
+        link: 'https://t.me/IM_NIGHT_1',
+        shift: 'night',
+        shiftTime: '09:00 م - 11:00 م',
+        teacher: 'فضيلة الشيخ خالد أحمد',
+      },
+      'female-morning': {
+        code: 'IF_MORNING',
+        name: 'حلقة الإناث - الفترة الصباحية (IF Morning)',
+        chatId: '-1004464170793',
+        link: 'https://t.me/IF_MORNING',
+        shift: 'morning',
+        shiftTime: '09:00 ص - 12:00 م',
+        teacher: 'المشرفة التعليمية المعتمدة',
+      },
+      'female-afternoon': {
+        code: 'IF_AFTERNOON',
+        name: 'حلقة الإناث - الفترة المسائية (IF Afternoon)',
+        chatId: '-1004388200431',
+        link: 'https://t.me/IF_AFTERNOON',
+        shift: 'afternoon',
+        shiftTime: '02:00 م - 03:30 م',
+        teacher: 'المشرفة التعليمية المعتمدة',
+      },
+      'female-night': {
+        code: 'IF_NIGHT',
+        name: 'حلقة الإناث - الفترة الليلية (IF Night)',
+        chatId: '-1004297425702',
+        link: 'https://t.me/IF_NIGHT',
+        shift: 'night',
+        shiftTime: '09:00 م - 11:00 م',
+        teacher: 'المشرفة التعليمية المعتمدة',
+      },
+    };
+
+    const key = `${gender}-${shift}` as keyof typeof groupRoutingMap;
+    const assigned = groupRoutingMap[key] || groupRoutingMap['male-morning'];
+
+    setStudentCode(newCode);
+    setGroupInfo(assigned);
+    setHasGroup(true);
+    setIsRestricted(false);
+    setRegStep(0);
+
+    addBotMessage(
+      `🎉 *تم اعتماد تسجيلك بنجاح بمقرأة الإمام الجزري* 🌿\n\n` +
+      `🏷️ *كود الطالب الخاص بك:* \`${newCode}\`\n` +
+      `👥 *المجموعة المخصصة:* ${assigned.name}\n` +
+      `🔢 *معرف المجموعة:* \`${assigned.chatId}\`\n` +
+      `🕒 *الفترة الدراسية:* ${assigned.shiftTime}\n` +
+      `🔗 *رابط مجموعتك في تيليجرام:* ${assigned.link}\n\n` +
+      `🛡️ *ملاحظة:* البوت مشرف على هذه المجموعة، يرسل تنبيهات الدروس قبل بدئها بكلمات طيبة، ويتابع رصيد الدقائق. حافظ على رصيدك للاستمرار في المشاركة الصوتية.`,
+      [
+        { label: '🔗 انضمام إلى مجموعة التيليجرام', action: () => addBotMessage(`تم توجيهك إلى: ${assigned.link}`) },
+        { label: '💳 شحن رصيد الحصص', action: () => handleCommand('/packages') },
+        { label: '⬅️ القائمة الرئيسية', action: () => addBotMessage('الرئيسية:', getMainButtons()) },
+      ]
+    );
+  };
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
@@ -321,25 +562,18 @@ export const TelegramBotSimulator: React.FC = () => {
       addUserMessage(text);
       setRegData((prev) => ({ ...prev, name: text }));
       setRegStep(2);
-      addBotMessage(`2️⃣ أدخل عمرك أو سنة ميلادك:`);
-      return;
-    }
-    if (regStep === 2) {
-      addUserMessage(text);
-      setRegData((prev) => ({ ...prev, age: text }));
-      setRegStep(3);
-      addBotMessage(`3️⃣ أدخل دولتك الحالية ومدينتك:`);
-      return;
-    }
-    if (regStep === 3) {
-      addUserMessage(text);
-      setRegData((prev) => ({ ...prev, country: text }));
-      setRegStep(4);
       addBotMessage(
-        `🎉 *تم استلام طلب التسجيل بنجاح!*\nرقم الطلب: *#REG-8821*\n\nستقوم اللجنة الأكاديمية بمراجعة طلبك وإسنادك إلى الحلقة المناسبة وتزويدك برابط مجموعة تيليجرام.`,
-        getMainButtons()
+        `2️⃣ حدد الجنس (يتم إنشاء كود IM للذكور و IF للإناث):`,
+        [
+          { label: '👨 ذكر (IM)', action: () => handleGenderSelection('male') },
+          { label: '👩 أنثى (IF)', action: () => handleGenderSelection('female') },
+        ]
       );
-      setRegStep(0);
+      return;
+    }
+
+    if (regStep === 5) {
+      handleCompleteRegistration(text);
       return;
     }
 
@@ -347,46 +581,97 @@ export const TelegramBotSimulator: React.FC = () => {
       handleCommand(text);
     } else {
       addUserMessage(text);
-      addBotMessage(`تم استلام رسالتك: "${text}". يرجى الاختيار من الأزرار التفاعلية أدناه:`, getMainButtons());
+      addBotMessage(`تم استلام رسالتك: "${text}". يرجى الاختيار من القائمة:`, getMainButtons());
     }
   };
 
   return (
     <div className="space-y-4">
-      {/* Simulation Controls Bar */}
-      <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-emerald-600" />
-          <span className="font-bold text-stone-900">محاكي بوت تيليجرام الحي (Interactive aiogram 3.x Engine)</span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-lg">
-            <span className="text-stone-500 pr-1">الدور:</span>
-            <button
-              onClick={() => setUserRole('student')}
-              className={`px-2 py-0.5 rounded cursor-pointer ${
-                userRole === 'student' ? 'bg-white font-bold text-stone-900 shadow-xs' : 'text-stone-600'
-              }`}
-            >
-              طالب
-            </button>
-            <button
-              onClick={() => setUserRole('admin')}
-              className={`px-2 py-0.5 rounded cursor-pointer ${
-                userRole === 'admin' ? 'bg-[#105C3B] font-bold text-white shadow-xs' : 'text-stone-600'
-              }`}
-            >
-              مدير عام
-            </button>
+      
+      {/* Simulation Controls & Quick Test Bar */}
+      <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-600" />
+            <span className="font-bold text-stone-900">
+              محاكي بوت تيليجرام النشط (المجموعات الست، التنبيهات الإيمانية، والتقييد الآلي)
+            </span>
           </div>
 
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-lg">
+              <span className="text-stone-500 pr-1 text-[11px]">كود الطالب:</span>
+              <span className="font-mono font-bold text-[#105C3B] bg-white px-2 py-0.5 rounded shadow-2xs">
+                {studentCode}
+              </span>
+            </div>
+
+            <button
+              onClick={restartBot}
+              className="flex items-center gap-1 text-stone-600 hover:text-stone-900 bg-stone-100 px-3 py-1.5 rounded-lg cursor-pointer text-xs"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>إعادة البدء (/start)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Scenario Triggers */}
+        <div className="pt-2 border-t border-stone-100 flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-stone-400 font-semibold text-[11px]">محاكاة سريعة لأوامر البوت:</span>
+          
           <button
-            onClick={restartBot}
-            className="flex items-center gap-1 text-stone-600 hover:text-stone-900 bg-stone-100 px-3 py-1.5 rounded-lg cursor-pointer"
+            onClick={simulateMorningLessonReminder}
+            className="flex items-center gap-1 bg-amber-50 hover:bg-amber-100 text-amber-900 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors border border-amber-200 text-[11px] font-bold"
+            title="إرسال تذكير الفترة الصباحية (09:00 - 12:00) بكلمات جميلة"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>إعادة تشغيل (/start)</span>
+            <Bell className="w-3 h-3 text-amber-600" />
+            <span>تذكير الصباح (09:00)</span>
+          </button>
+
+          <button
+            onClick={simulateAfternoonLessonReminder}
+            className="flex items-center gap-1 bg-sky-50 hover:bg-sky-100 text-sky-900 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors border border-sky-200 text-[11px] font-bold"
+            title="إرسال تذكير الفترة المسائية (02:00 - 03:30)"
+          >
+            <Bell className="w-3 h-3 text-sky-600" />
+            <span>تذكير المساء (14:00)</span>
+          </button>
+
+          <button
+            onClick={simulateNightLessonReminder}
+            className="flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors border border-indigo-200 text-[11px] font-bold"
+            title="إرسال تذكير الفترة الليلية (09:00 - 11:00)"
+          >
+            <Bell className="w-3 h-3 text-indigo-600" />
+            <span>تذكير الليل (21:00)</span>
+          </button>
+
+          <button
+            onClick={simulateZeroBalanceMute}
+            className="flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-800 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors border border-rose-200 text-[11px] font-bold"
+            title="محاكاة وصول الرصيد إلى 0 وتقييد الطالب في المجموعة"
+          >
+            <VolumeX className="w-3 h-3 text-rose-600" />
+            <span>نفاد الرصيد وتقييد المجموعة</span>
+          </button>
+
+          <button
+            onClick={handleEmergencyBorrow}
+            className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-[#105C3B] px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors border border-emerald-200 text-[11px] font-bold"
+            title="استلاف رصيد طوارئ وفك الحظر تلقائياً"
+          >
+            <Zap className="w-3 h-3 text-emerald-600" />
+            <span>استلاف طوارئ (+30) وفك الحظر</span>
+          </button>
+
+          <button
+            onClick={handleTopUpSuccess}
+            className="flex items-center gap-1 bg-purple-50 hover:bg-purple-100 text-purple-900 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors border border-purple-200 text-[11px] font-bold"
+            title="شحن باقة 300 دقيقة"
+          >
+            <CreditCard className="w-3 h-3 text-purple-600" />
+            <span>شحن باقة 300 دقيقة</span>
           </button>
         </div>
       </div>
@@ -414,11 +699,23 @@ export const TelegramBotSimulator: React.FC = () => {
                   <span>بوت مقرأة الجزري</span>
                   <CheckCircle2 className="w-3.5 h-3.5 text-sky-400" />
                 </div>
-                <div className="text-[10px] text-stone-400">bot • @AlJazariQuranBot</div>
+                <div className="text-[10px] text-stone-400">
+                  @AlJazariQuranBot • مشرف المجموعات الست
+                </div>
               </div>
             </div>
-            <div className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800">
-              online
+            
+            <div className="flex items-center gap-1.5">
+              {isRestricted ? (
+                <div className="text-[9px] font-bold text-red-300 bg-red-950/80 px-2 py-0.5 rounded-full border border-red-700 flex items-center gap-0.5">
+                  <VolumeX className="w-2.5 h-2.5" />
+                  <span>مقيد</span>
+                </div>
+              ) : (
+                <div className="text-[9px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800">
+                  {balance} دقيقة
+                </div>
+              )}
             </div>
           </div>
 
@@ -471,7 +768,7 @@ export const TelegramBotSimulator: React.FC = () => {
           >
             <input
               type="text"
-              placeholder="اكتب رسالة أو أمراً (مثال: /programs, /balance)..."
+              placeholder="اكتب رسالة أو أمراً (مثال: /mygroup, /balance, /register)..."
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               className="flex-1 bg-[#242f3d] text-white placeholder-stone-400 text-xs px-3 py-2.5 rounded-xl focus:outline-none"

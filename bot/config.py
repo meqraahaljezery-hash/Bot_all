@@ -15,7 +15,7 @@ except ImportError:
 
 class Settings:
     # Bot Settings
-    BOT_TOKEN: str = os.getenv("BOT_TOKEN", "123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ")
+    BOT_TOKEN: str = os.getenv("BOT_TOKEN", "9040406341:AAHjFYGQ0EcV60VpX1J7xQbVNcT29Drkl4M")
     BOT_MODE: str = os.getenv("BOT_MODE", "polling").lower()  # "polling" or "webhook"
     
     # Webhook Settings
@@ -25,7 +25,7 @@ class Settings:
     WEBHOOK_HOST: str = os.getenv("WEBHOOK_HOST", "0.0.0.0")
 
     # Super Admin Info
-    SUPER_ADMIN_TELEGRAM_ID: int = int(os.getenv("SUPER_ADMIN_TELEGRAM_ID", "0"))
+    SUPER_ADMIN_TELEGRAM_ID: int = int(os.getenv("SUPER_ADMIN_TELEGRAM_ID", "7334314796"))
     SUPER_ADMIN_EMAIL: str = os.getenv("SUPER_ADMIN_EMAIL", "khdahd241@gmail.com")
 
     # Official Center Contact
@@ -34,6 +34,65 @@ class Settings:
     CENTER_NAME_AR: str = "مقرأة الإمام الجزري للإقراء والإجازة بالسند"
     CENTER_NAME_EN: str = "Imam Al-Jazari Quran Recitation & Ijazah Center"
     CENTER_NAME_AM: str = "የኢማም አል-ጀዘሪ የቁርአን ንባብ እና የኢጃዛ ማዕከል"
+
+    # Official 6 Study Groups Moderated by Bot (Divided by Gender & 3 Shifts)
+    STUDY_GROUPS = {
+        "IM_MORNING": {
+            "chat_id": -1003701915037,
+            "link": "https://t.me/IM_MORNING_2",
+            "gender": "male",
+            "shift": "morning",
+            "time": "09:00 - 12:00",
+            "name": "مجموعة الذكور - الفترة الصباحية (IM Morning)",
+        },
+        "IM_AFTERNOON": {
+            "chat_id": -1003954336712,
+            "link": "https://t.me/IM_AFTERNOON_3",
+            "gender": "male",
+            "shift": "afternoon",
+            "time": "14:00 - 15:30",
+            "name": "مجموعة الذكور - الفترة المسائية (IM Afternoon)",
+        },
+        "IM_NIGHT": {
+            "chat_id": -1003771613278,
+            "link": "https://t.me/IM_NIGHT_1",
+            "gender": "male",
+            "shift": "night",
+            "time": "21:00 - 23:00",
+            "name": "مجموعة الذكور - الفترة الليلية (IM Night)",
+        },
+        "IF_MORNING": {
+            "chat_id": -1004464170793,
+            "link": "https://t.me/IF_MORNING",
+            "gender": "female",
+            "shift": "morning",
+            "time": "09:00 - 12:00",
+            "name": "مجموعة الإناث - الفترة الصباحية (IF Morning)",
+        },
+        "IF_AFTERNOON": {
+            "chat_id": -1004388200431,
+            "link": "https://t.me/IF_AFTERNOON",
+            "gender": "female",
+            "shift": "afternoon",
+            "time": "14:00 - 15:30",
+            "name": "مجموعة الإناث - الفترة المسائية (IF Afternoon)",
+        },
+        "IF_NIGHT": {
+            "chat_id": -1004297425702,
+            "link": "https://t.me/IF_NIGHT",
+            "gender": "female",
+            "shift": "night",
+            "time": "21:00 - 23:00",
+            "name": "مجموعة الإناث - الفترة الليلية (IF Night)",
+        },
+    }
+
+    # Public Forums
+    PUBLIC_FORUMS = {
+        "FORUM_MEN": "https://t.me/IM_GENERAL_FORUM",
+        "FORUM_WOMEN": "https://t.me/IF_GENERAL_FORUM",
+        "FORUM_CENTER": "https://t.me/JazariCenterOfficial",
+    }
 
     # Database & Supabase
     DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")

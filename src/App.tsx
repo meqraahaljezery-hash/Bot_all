@@ -11,6 +11,8 @@ import {
   INITIAL_GROUPS,
   INITIAL_SUPPORT_TICKETS,
   INITIAL_AUDIT_LOGS,
+  INITIAL_SCHEDULED_NOTIFICATIONS,
+  INITIAL_NOTIFICATION_LOGS,
 } from './data/initialData';
 import {
   Language,
@@ -25,6 +27,8 @@ import {
   User,
   SupportTicket,
   AuditLog,
+  ScheduledNotification,
+  NotificationDispatchLog,
 } from './types';
 import { Header } from './components/Header';
 import { Sidebar, NavTab } from './components/Sidebar';
@@ -38,6 +42,7 @@ import { PackagesManager } from './components/PackagesManager';
 import { PaymentMethodsManager } from './components/PaymentMethodsManager';
 import { UsersManager } from './components/UsersManager';
 import { SupervisorsManager } from './components/SupervisorsManager';
+import { NotificationsManager } from './components/NotificationsManager';
 import { AnnouncementsManager } from './components/AnnouncementsManager';
 import { SupportManager } from './components/SupportManager';
 import { AuditLogView } from './components/AuditLogView';
@@ -60,6 +65,8 @@ export default function App() {
   const [groups, setGroups] = useState<QuranGroup[]>(INITIAL_GROUPS);
   const [tickets, setTickets] = useState<SupportTicket[]>(INITIAL_SUPPORT_TICKETS);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
+  const [notifications, setNotifications] = useState<ScheduledNotification[]>(INITIAL_SCHEDULED_NOTIFICATIONS);
+  const [dispatchLogs, setDispatchLogs] = useState<NotificationDispatchLog[]>(INITIAL_NOTIFICATION_LOGS);
 
   // Settings State
   const [contactPhone, setContactPhone] = useState('0990161372');
@@ -80,10 +87,24 @@ export default function App() {
 
   // 1. Approve Registration & Assign Group
   const handleApproveRegistration = (regId: string, assignedGroupId: string) => {
+    const assignedGroup = groups.find((g) => g.id === assignedGroupId);
+    const reg = registrations.find((r) => r.id === regId);
+    
+    // Generate sequential student code if not present (IM-XXXX for male, IF-XXXX for female)
+    const genderPrefix = reg?.gender === 'female' ? 'IF' : 'IM';
+    const codeCount = registrations.filter((r) => r.student_code?.startsWith(genderPrefix)).length + 1001;
+    const finalCode = reg?.student_code || `${genderPrefix}-${codeCount}`;
+
     setRegistrations((prev) =>
       prev.map((r) =>
         r.id === regId
-          ? { ...r, status: 'approved', assigned_group_id: assignedGroupId }
+          ? {
+              ...r,
+              status: 'approved',
+              student_code: finalCode,
+              assigned_group_id: assignedGroupId,
+              assigned_telegram_link: assignedGroup?.telegram_invite_link,
+            }
           : r
       )
     );
@@ -97,11 +118,45 @@ export default function App() {
       )
     );
 
-    const reg = registrations.find((r) => r.id === regId);
+    // Also update balances state with student code and group
+    setBalances((prev) => {
+      const exists = prev.find((b) => b.user_id === reg?.user_id);
+      if (exists) {
+        return prev.map((b) =>
+          b.user_id === reg?.user_id
+            ? {
+                ...b,
+                student_code: finalCode,
+                assigned_group_id: assignedGroupId,
+                assigned_group_name: assignedGroup?.name,
+                assigned_telegram_link: assignedGroup?.telegram_invite_link,
+              }
+            : b
+        );
+      }
+      return [
+        ...prev,
+        {
+          user_id: reg?.user_id || `usr-${Date.now()}`,
+          student_code: finalCode,
+          student_name: reg?.student_name || 'طالب جديد',
+          telegram_id: reg?.telegram_id || 12345678,
+          current_minutes: 0,
+          total_purchased: 0,
+          total_consumed: 0,
+          total_bonus: 0,
+          is_restricted: false,
+          assigned_group_id: assignedGroupId,
+          assigned_group_name: assignedGroup?.name,
+          assigned_telegram_link: assignedGroup?.telegram_invite_link,
+        },
+      ];
+    });
+
     logAudit(
       'قبول طلب تسجيل وتعيين حلقة',
       `Registration ${regId}`,
-      `تم قبول الطالب ${reg?.student_name} وتعيينه في المجموعة ${assignedGroupId}`
+      `تم قبول الطالب ${reg?.student_name} (كود: ${finalCode}) وتعيينه في المجموعة ${assignedGroup?.name || assignedGroupId}`
     );
   };
 
@@ -301,6 +356,129 @@ export default function App() {
     );
   };
 
+  // Telegram Group Moderation & Balance Handlers
+  const handleRestrictStudent = (userId: string, reason: string) => {
+    const student = balances.find((b) => b.user_id === userId);
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    setBalances((prev) =>
+      prev.map((b) =>
+        b.user_id === userId
+          ? { ...b, is_restricted: true, restriction_reason: reason, restricted_at: nowStr }
+          : b
+      )
+    );
+    logAudit(
+      'تقييد طالب في مجموعة التيليجرام',
+      `User ${userId}`,
+      `تم تقييد الطالب ${student?.student_name} في مجموعته بسبب: ${reason}`
+    );
+  };
+
+  const handleUnrestrictStudent = (userId: string) => {
+    const student = balances.find((b) => b.user_id === userId);
+    setBalances((prev) =>
+      prev.map((b) =>
+        b.user_id === userId
+          ? { ...b, is_restricted: false, restriction_reason: undefined, restricted_at: undefined }
+          : b
+      )
+    );
+    logAudit(
+      'رفع التقييد واستعادة صلاحيات الطالب في التيليجرام',
+      `User ${userId}`,
+      `تم رفع الحظر والتقييد عن الطالب ${student?.student_name} واستعادة صلاحيات الكتابة والمشاركة الصوتية`
+    );
+  };
+
+  const handleBorrowMinutes = (userId: string, minutes: number = 30) => {
+    const student = balances.find((b) => b.user_id === userId);
+    if (!student) return;
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const before = student.current_minutes;
+    const after = before + minutes;
+
+    setBalances((prev) =>
+      prev.map((b) =>
+        b.user_id === userId
+          ? {
+              ...b,
+              current_minutes: after,
+              borrowed_minutes: (b.borrowed_minutes || 0) + minutes,
+              is_restricted: false,
+              restriction_reason: undefined,
+              restricted_at: undefined,
+            }
+          : b
+      )
+    );
+
+    const newEntry: BalanceLedgerEntry = {
+      id: `LED-${Date.now().toString().slice(-4)}`,
+      user_id: userId,
+      student_name: student.student_name,
+      type: 'emergency_borrow',
+      minutes_change: minutes,
+      balance_before: before,
+      balance_after: after,
+      reason: `منح استلاف رصيد طوارئ (+${minutes} دقيقة) لرفع الحظر عن المجموعة وتمكين الطالب من الحضور`,
+      performed_by: `المدير العام (${superAdminEmail})`,
+      created_at: nowStr,
+    };
+    setLedger((prev) => [newEntry, ...prev]);
+
+    logAudit(
+      'منح استلاف رصيد طوارئ وفك الحظر',
+      `User ${userId}`,
+      `إضافة ${minutes} دقيقة استلاف للطالب ${student.student_name} ورفع تقييد المجموعة`
+    );
+  };
+
+  const handleSendLowBalanceWarning = (userId: string) => {
+    const student = balances.find((b) => b.user_id === userId);
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const newLog: NotificationDispatchLog = {
+      id: `nlog-${Date.now()}`,
+      notification_id: 'notif-low-balance-auto',
+      notification_title: 'تنبيه آلي خاص: قرب نفاد الرصيد وتفادي تقييد المجموعة',
+      category: 'payment_reminder',
+      sent_at: nowStr,
+      recipients_count: 1,
+      success_count: 1,
+      failed_count: 0,
+      channel: 'Telegram Direct Message API',
+      message_snippet: `تنبيه خاص للطالب ${student?.student_name} (الكود: ${student?.student_code || 'IM-1001'}) بالرصيد المتبقي ${student?.current_minutes} دقيقة.`,
+    };
+    setDispatchLogs((prev) => [newLog, ...prev]);
+    logAudit(
+      'إرسال تنبيه نفاذ رصيد خاص',
+      `User ${userId}`,
+      `تم إرسال إشعار تحذيري للطالب ${student?.student_name} لتفادي تقييد التيليجرام`
+    );
+  };
+
+  const handleTriggerLessonReminder = (groupId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const newLog: NotificationDispatchLog = {
+      id: `nlog-${Date.now()}`,
+      notification_id: `notif-manual-${groupId}`,
+      notification_title: `تذكير درس بمشاعر إيمانية: ${group?.name}`,
+      category: 'lesson_reminder',
+      sent_at: nowStr,
+      recipients_count: group?.current_members_count || 8,
+      success_count: group?.current_members_count || 8,
+      failed_count: 0,
+      channel: 'Telegram Bot Group Broadcast API',
+      message_snippet: `🌿 أقبلوا إلى مائدة القرآن ونور الفرقان... تذكير موعد حلقة ${group?.name} (${group?.shift_time || 'الدرس اليومي'}).`,
+    };
+    setDispatchLogs((prev) => [newLog, ...prev]);
+    logAudit(
+      'بث تذكير درس للمجموعة',
+      `Group ${groupId}`,
+      `إرسال تذكير بكلمات طيبة لمجموعة ${group?.name}`
+    );
+  };
+
   // 7. Payment Methods Management
   const handleUpdatePaymentMethod = (updated: PaymentMethodConfig) => {
     setPaymentMethods((prev) =>
@@ -357,6 +535,94 @@ export default function App() {
     );
     logAudit('تغيير حالة تجميد الحساب', `User ${userId}`, reason || 'تحديث إداري');
   };
+
+  // 11. Automated Notifications Handlers
+  const handleAddNotification = (newNotif: ScheduledNotification) => {
+    setNotifications((prev) => [newNotif, ...prev]);
+    logAudit('جدولة إشعار آلي جديد', `Notification ${newNotif.id}`, `العنوان: ${newNotif.title}`);
+  };
+
+  const handleUpdateNotification = (updated: ScheduledNotification) => {
+    setNotifications((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+    logAudit('تعديل إشعار مجدول', `Notification ${updated.id}`, `العنوان: ${updated.title}`);
+  };
+
+  const handleDeleteNotification = (notifId: string) => {
+    const notif = notifications.find((n) => n.id === notifId);
+    setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+    logAudit('حذف إشعار مجدول', `Notification ${notifId}`, `تم حذف: ${notif?.title || notifId}`);
+  };
+
+  const handleTriggerNotification = (notifId: string) => {
+    const notif = notifications.find((n) => n.id === notifId);
+    if (!notif) return;
+
+    let targetCount = 1;
+    if (notif.target_type === 'specific_group') {
+      const g = groups.find((grp) => grp.id === notif.target_group_id);
+      targetCount = g?.current_members_count || 8;
+    } else if (notif.target_type === 'low_balance_students') {
+      const threshold = notif.low_balance_threshold || 30;
+      targetCount = balances.filter((b) => b.current_minutes <= threshold).length || 3;
+    } else if (notif.target_type === 'all_students') {
+      targetCount = users.filter((u) => u.role === 'student').length || balances.length;
+    } else if (notif.target_type === 'specific_program') {
+      targetCount = 6;
+    }
+
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+    // Update notification last_sent_at and total count
+    setNotifications((prev) =>
+      prev.map((n) =>
+        n.id === notifId
+          ? {
+              ...n,
+              last_sent_at: nowStr,
+              total_dispatched_count: n.total_dispatched_count + targetCount,
+            }
+          : n
+      )
+    );
+
+    // Add log
+    const newLog: NotificationDispatchLog = {
+      id: `nlog-${Date.now()}`,
+      notification_id: notif.id,
+      notification_title: notif.title,
+      category: notif.category,
+      sent_at: nowStr,
+      recipients_count: targetCount,
+      success_count: targetCount,
+      failed_count: 0,
+      channel: 'Telegram Bot Push API',
+      message_snippet: notif.message_template.slice(0, 75) + '...',
+    };
+    setDispatchLogs((prev) => [newLog, ...prev]);
+
+    logAudit(
+      'تشغيل وبث إشعار آلي فوري',
+      `Notification ${notif.id}`,
+      `تم إرسال "${notif.title}" إلى ${targetCount} طالب عبر التيليجرام بنجاح`
+    );
+  };
+
+  const handleToggleNotificationStatus = (notifId: string) => {
+    setNotifications((prev) =>
+      prev.map((n) =>
+        n.id === notifId
+          ? { ...n, status: n.status === 'active' ? 'paused' : 'active' }
+          : n
+      )
+    );
+    const notif = notifications.find((n) => n.id === notifId);
+    logAudit(
+      'تغيير حالة الإشعار المجدول',
+      `Notification ${notifId}`,
+      notif?.status === 'active' ? 'إيقاف مؤقت' : 'استئناف وتفعيل'
+    );
+  };
+
 
   const pendingRegistrationsCount = registrations.filter((r) => r.status === 'pending').length;
   const pendingPaymentsCount = payments.filter((p) => p.status === 'pending').length;
@@ -428,9 +694,15 @@ export default function App() {
               groups={groups}
               teachers={teachersList}
               programs={programs}
+              balances={balances}
               onCreateGroup={handleCreateGroup}
               onUpdateTelegramLink={handleUpdateTelegramLink}
               onToggleGroupStatus={handleToggleGroupStatus}
+              onRestrictStudent={handleRestrictStudent}
+              onUnrestrictStudent={handleUnrestrictStudent}
+              onBorrowMinutes={handleBorrowMinutes}
+              onSendLowBalanceWarning={handleSendLowBalanceWarning}
+              onTriggerLessonReminder={handleTriggerLessonReminder}
             />
           )}
 
@@ -477,6 +749,23 @@ export default function App() {
 
           {activeTab === 'supervisors' && (
             <SupervisorsManager users={users} />
+          )}
+
+          {activeTab === 'notifications' && (
+            <NotificationsManager
+              notifications={notifications}
+              onAddNotification={handleAddNotification}
+              onUpdateNotification={handleUpdateNotification}
+              onDeleteNotification={handleDeleteNotification}
+              onTriggerNotification={handleTriggerNotification}
+              onToggleStatus={handleToggleNotificationStatus}
+              dispatchLogs={dispatchLogs}
+              groups={groups}
+              programs={programs}
+              balances={balances}
+              users={users}
+              contactPhone={contactPhone}
+            />
           )}
 
           {activeTab === 'announcements' && (

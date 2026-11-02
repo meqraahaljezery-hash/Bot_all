@@ -7,7 +7,7 @@ No student can directly edit balance; only authorized transactions or admins can
 import uuid
 from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -76,7 +76,7 @@ class LedgerService:
             "reason": f"اعتماد طلب الدفع رقم {payment_id}",
             "payment_id": payment_id,
             "performed_by": approved_by,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
         self._processed_idempotency_keys.add(idempotency_key)
@@ -134,7 +134,7 @@ class LedgerService:
             "balance_after": after,
             "reason": reason,
             "performed_by": performed_by,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
         return TransactionResult(

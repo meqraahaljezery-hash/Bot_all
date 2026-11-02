@@ -166,8 +166,13 @@ async def process_email(message: Message, state: FSMContext):
             inline_keyboard=[
                 [
                     InlineKeyboardButton(text=t("reg_shift_morning", lang), callback_data="shift:morning"),
-                    InlineKeyboardButton(text=t("reg_shift_evening", lang), callback_data="shift:evening"),
-                ]
+                ],
+                [
+                    InlineKeyboardButton(text=t("reg_shift_afternoon", lang), callback_data="shift:afternoon"),
+                ],
+                [
+                    InlineKeyboardButton(text=t("reg_shift_night", lang), callback_data="shift:night"),
+                ],
             ]
         )
         await message.answer(t("reg_step_9", lang), reply_markup=shift_kb)
@@ -197,8 +202,13 @@ async def process_program_choice(callback: CallbackQuery, state: FSMContext):
         inline_keyboard=[
             [
                 InlineKeyboardButton(text=t("reg_shift_morning", lang), callback_data="shift:morning"),
-                InlineKeyboardButton(text=t("reg_shift_evening", lang), callback_data="shift:evening"),
-            ]
+            ],
+            [
+                InlineKeyboardButton(text=t("reg_shift_afternoon", lang), callback_data="shift:afternoon"),
+            ],
+            [
+                InlineKeyboardButton(text=t("reg_shift_night", lang), callback_data="shift:night"),
+            ],
         ]
     )
     await callback.message.edit_text(f"✅ تم اختيار البرنامج: {prog_id}")
@@ -290,17 +300,52 @@ async def finalize_registration(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
 
     reg_id = str(uuid.uuid4())[:8].upper()
+    gender = data.get("gender", "male")
+    shift = data.get("shift", "morning")
+
+    # Generate sequential student code: IM-XXXX for male, IF-XXXX for female
+    gender_prefix = "IM" if gender == "male" else "IF"
+    existing_count = sum(1 for r in REGISTRATIONS_STORE.values() if r.get("student_code", "").startswith(gender_prefix))
+    student_code = f"{gender_prefix}-{1001 + existing_count}"
+
+    # Group routing map based on gender and shift
+    group_map = {
+        ("male", "morning"): ("حلقة الذكور الصباحية (09:00 - 12:00)", "https://t.me/IM_MORNING_2", "-1003701915037"),
+        ("male", "afternoon"): ("حلقة الذكور المسائية (14:00 - 15:30)", "https://t.me/IM_AFTERNOON_3", "-1003954336712"),
+        ("male", "night"): ("حلقة الذكور الليلية (21:00 - 23:00)", "https://t.me/IM_NIGHT_1", "-1003771613278"),
+        ("female", "morning"): ("حلقة الإناث الصباحية (09:00 - 12:00)", "https://t.me/IF_MORNING", "-1004464170793"),
+        ("female", "afternoon"): ("حلقة الإناث المسائية (14:00 - 15:30)", "https://t.me/IF_AFTERNOON", "-1004388200431"),
+        ("female", "night"): ("حلقة الإناث الليلية (21:00 - 23:00)", "https://t.me/IF_NIGHT", "-1004297425702"),
+    }
+    # Fallback to male morning if not matched
+    group_info = group_map.get((gender, shift), group_map.get((gender, "morning"), group_map[("male", "morning")]))
+    group_name, group_link, group_chat_id = group_info
+
     REGISTRATIONS_STORE[reg_id] = {
         "id": reg_id,
+        "student_code": student_code,
         "telegram_id": user_id,
         "data": data,
-        "status": "pending",
+        "status": "approved",
+        "assigned_group_name": group_name,
+        "assigned_group_link": group_link,
+        "assigned_group_chat_id": group_chat_id,
         "created_at": "2026-11-01",
     }
 
     await state.clear()
+    
+    success_msg = (
+        f"🎉 *تهانينا! تم تسجيلك بنجاح بمقرأة الإمام الجزري* 🌿\n\n"
+        f"🏷️ *كود الطالب الخاص بك:* `{student_code}`\n"
+        f"👥 *الحلقة المخصصة:* {group_name}\n"
+        f"🕒 *الفترة:* {t('reg_shift_' + shift, lang)}\n"
+        f"🔗 *رابط مجموعتك في تيليجرام:* {group_link}\n\n"
+        f"🛡️ *تنبيه الإشراف:* البوت مشرف معتمد في مجموعتك لإرسال تذكيرات الدروس ومتابعة رصيد الدقائق. حافظ على رصيدك للاستمرار في المشاركة الصوتية والتسميع."
+    )
+
     await callback.message.edit_text(
-        text=t("reg_submitted_success", lang, reg_id=reg_id),
+        text=success_msg,
         parse_mode="Markdown",
     )
     await callback.message.answer(
