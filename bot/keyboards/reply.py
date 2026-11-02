@@ -1,13 +1,11 @@
 """
 Reply Keyboards for Imam Al-Jazari Telegram Bot.
 """
-
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from bot.services.user_service import user_service
 
 def get_main_menu_keyboard(telegram_id: int, lang: str = "ar") -> ReplyKeyboardMarkup:
-    
-    # 1. قائمة السوبر أدمن (لا يرى أزرار الطالب)
+    # 1. قائمة السوبر أدمن
     if user_service.is_super_admin(telegram_id):
         keyboard = [
             [KeyboardButton(text="👨‍🎓 إدارة الطلاب والمستخدمين")],
@@ -19,7 +17,7 @@ def get_main_menu_keyboard(telegram_id: int, lang: str = "ar") -> ReplyKeyboardM
         ]
         return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, is_persistent=True)
 
-    # 2. قائمة المشرفين (Admin/Supervisor)
+    # 2. قائمة المشرف العادي
     if user_service.is_admin_or_supervisor(telegram_id):
         keyboard = [
             [KeyboardButton(text="👨‍🎓 إدارة الطلاب")],
@@ -29,16 +27,7 @@ def get_main_menu_keyboard(telegram_id: int, lang: str = "ar") -> ReplyKeyboardM
         ]
         return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, is_persistent=True)
 
-    # 3. قائمة المعلم
-    if user_service.is_teacher(telegram_id):
-        keyboard = [
-            [KeyboardButton(text="👨‍🏫 بوابة المعلم")],
-            [KeyboardButton(text="👥 مجموعتي"), KeyboardButton(text="🆘 الدعم")],
-            [KeyboardButton(text="📖 التعريف بالمقرأة"), KeyboardButton(text="⚙️ إعداداتي")]
-        ]
-        return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, is_persistent=True)
-
-    # 4. قائمة الطالب (استعدنا كل الأزرار القديمة)
+    # 3. قائمة الطالب
     keyboard = [
         [KeyboardButton(text="📖 التعريف بالمقرأة"), KeyboardButton(text="📚 البرامج")],
         [KeyboardButton(text="📝 التسجيل"), KeyboardButton(text="💳 باقات الدفع")],
