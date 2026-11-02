@@ -1,11 +1,6 @@
-"""
-Main entry point for Imam Al-Jazari Telegram Bot.
-Supports polling (local development/testing) and webhook (production).
-Integrated with FastAPI for webhooks and health endpoints.
-"""
-
 import sys
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 import uvicorn
@@ -14,8 +9,14 @@ from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot.config import settings
+from bot.services.database import supabase
+from bot.services.ledger_service import ledger_service
+from bot.locales.i18n import t
+
+# استيراد الـ Middlewares والـ Routers
 from bot.middlewares.auth import AuthMiddleware
 from bot.middlewares.throttling import ThrottlingMiddleware
 from bot.handlers.start import router as start_router
@@ -29,24 +30,15 @@ from bot.handlers.support import router as support_router
 from bot.handlers.teacher import router as teacher_router
 from bot.handlers.admin import router as admin_router
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - [%(levelname)s] - %(name)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(name)s - %(message)s")
 logger = logging.getLogger("maqraah_bot")
-
 
 def build_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=MemoryStorage())
-    
-    # Register Middlewares
     dp.message.middleware(AuthMiddleware())
     dp.callback_query.middleware(AuthMiddleware())
     dp.message.middleware(ThrottlingMiddleware())
 
-    # Register Routers
     dp.include_router(start_router)
     dp.include_router(registration_router)
     dp.include_router(programs_router)
@@ -57,18 +49,36 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(support_router)
     dp.include_router(teacher_router)
     dp.include_router(admin_router)
-
     return dp
 
-
 def create_bot() -> Bot:
-    return Bot(
-        token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
-    )
+    return Bot(token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
 
+# === مهمة التنبيهات في الخلفية ===
+async def send_low_balance_alerts(bot: Bot):
+    while True:
+        try:
+            res = supabase.table('users').select('telegram_id').execute()
+            for user in res.data:
+                uid = user['telegram_id']
+                bal = ledger_service.get_balance(uid)['current_minutes']
+                
+                if bal <= 15:
+                    lang = t.get_user_language(uid) if hasattr(t, 'get_user_language') else "ar"
+                    # نستخدم user_service لجلب اللغة الحقيقية
+                    from bot.services.user_service import user_service
+                    lang = user_service.get_user_language(uid)
+                    
+                    kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🆘 طلب سلفة (15 دقيقة)" if lang=="ar" else "🆘 Request Loan", callback_data="req_loan")],
+                    ])
+                    try:
+                        await bot.send_message(uid, t("low_balance_alert", lang, balance=bal), reply_markup=kb)
+                    except: pass
+        except Exception as e:
+            logger.error(f"Error in alert task: {e}")
+        await asyncio.sleep(8 * 60 * 60) # كل 8 ساعات
 
-# FastAPI Application for Webhook mode
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     bot = create_bot()
@@ -78,35 +88,27 @@ async def lifespan(app: FastAPI):
 
     if settings.is_webhook:
         logger.info(f"Setting webhook to {settings.WEBHOOK_URL}")
-        await bot.set_webhook(
-            url=settings.WEBHOOK_URL,
-            secret_token=settings.WEBHOOK_SECRET,
-            drop_pending_updates=True,
-        )
+        await bot.set_webhook(url=settings.WEBHOOK_URL, secret_token=settings.WEBHOOK_SECRET, drop_pending_updates=True)
+    
+    # تشغيل المهمة في الخلفية
+    asyncio.create_task(send_low_balance_alerts(bot))
+    
     yield
+    
     if settings.is_webhook:
         await bot.delete_webhook()
     await bot.session.close()
 
-
-app = FastAPI(title="Imam Al-Jazari Telegram Bot API", lifespan=lifespan)
-
+app = FastAPI(title="Imam Al-Jazari Bot API", lifespan=lifespan)
 
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "healthy",
-        "bot_mode": settings.BOT_MODE,
-        "center": settings.CENTER_NAME_AR,
-    }
-
+    return {"status": "healthy", "bot_mode": settings.BOT_MODE}
 
 @app.post("/api/telegram/webhook")
 async def telegram_webhook(request: Request):
     bot: Bot = request.app.state.bot
     dp: Dispatcher = request.app.state.dp
-
-    # Verify secret token header
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
     if secret != settings.WEBHOOK_SECRET:
         return Response(status_code=403, content="Forbidden")
@@ -117,22 +119,17 @@ async def telegram_webhook(request: Request):
     await dp.feed_update(bot, update)
     return {"ok": True}
 
-
 async def main():
-    logger.info("Starting Imam Al-Jazari Telegram Bot in Polling Mode...")
+    logger.info("Starting Bot in Polling Mode...")
     bot = create_bot()
     dp = build_dispatcher()
-
     try:
         await dp.start_polling(bot, drop_pending_updates=True)
     finally:
         await bot.session.close()
 
-
 if __name__ == "__main__":
     if settings.is_webhook:
-        logger.info(f"Starting Webhook Server on {settings.WEBHOOK_HOST}:{settings.WEBHOOK_PORT}")
         uvicorn.run(app, host=settings.WEBHOOK_HOST, port=settings.WEBHOOK_PORT)
     else:
-        import asyncio
         asyncio.run(main())
