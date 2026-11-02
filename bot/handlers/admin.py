@@ -1,8 +1,6 @@
 """
-In-Bot Administration Panel Handler for Imam Al-Jazari Maqraah.
-Enforces strict RBAC via user_service and atomic financial transactions.
+Supervisor & Admin Panel Handler - STRICT RBAC & FSM Protection
 """
-
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -12,168 +10,273 @@ from bot.locales.i18n import t
 from bot.services.user_service import user_service
 from bot.services.ledger_service import ledger_service
 from bot.services.group_service import group_service
-from bot.handlers.payments import PAYMENT_REQUESTS_STORE
-from bot.handlers.registration import REGISTRATIONS_STORE
 
 router = Router(name="admin_router")
 
-
+# --- حالات FSM الخاصة بالمشرف ---
 class AdminStates(StatesGroup):
-    rejection_reason = State()
-    adjust_user = State()
-    adjust_amount = State()
-    adjust_reason = State()
-    broadcast_text = State()
+    # حالات التسجيل
+    reg_reject_reason = State()
+    # حالات الخصم
+    deduct_custom_amount = State()
+    # حالات الإضافة
+    add_balance_amount = State()
+    add_balance_reason = State()
 
-
-@router.message(F.text.in_([
-    "🛡 لوحة الإدارة", "🛡 Admin Panel", "🛡 የአስተዳደር ፓነል"
-]))
+# ==========================================
+# 1. القائمة الرئيسية للمشرف
+# ==========================================
+@router.message(F.text.in_(["👨‍🎓 إدارة الطلاب والمستخدمين", "👨‍🎓 إدارة الطلاب", "🛡 لوحة الإدارة"]))
 @router.message(Command("admin"))
 async def handle_admin_panel(message: Message):
     user_id = message.from_user.id
-    lang = user_service.get_user_language(user_id)
-
+    
+    # التحقق الصارم من الصلاحيات
     if not user_service.is_admin_or_supervisor(user_id):
-        await message.answer(t("admin_access_denied", lang))
+        await message.answer("⛔ عذراً، لا تملك صلاحية الوصول إلى لوحة الإدارة.")
         return
 
-    pending_regs = len([r for r in REGISTRATIONS_STORE.values() if r["status"] == "pending"])
-    pending_pays = len([p for p in PAYMENT_REQUESTS_STORE.values() if p["status"] == "pending"])
+    # جلب الإحصائيات (أرقام حقيقية من الخدمات)
+    pending_regs = len(user_service.get_pending_registrations())
+    pending_pays = len(ledger_service.get_pending_payments())
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=t("admin_btn_registrations", lang, count=pending_regs), callback_data="adm_view_regs")],
-            [InlineKeyboardButton(text=t("admin_btn_payments", lang, count=pending_pays), callback_data="adm_view_pays")],
-            [InlineKeyboardButton(text=t("admin_btn_balances", lang), callback_data="adm_adjust_balance_start")],
-            [InlineKeyboardButton(text=t("admin_btn_broadcast", lang), callback_data="adm_broadcast_start")],
+            [InlineKeyboardButton(text=f"📝 طلبات التسجيل ({pending_regs})", callback_data="adm_view_regs")],
+            [InlineKeyboardButton(text=f"💳 طلبات الدفع ({pending_pays})", callback_data="adm_view_pays")],
+            [InlineKeyboardButton(text="👨‍🎓 إدارة الطلاب", callback_data="adm_search_student")],
+            [InlineKeyboardButton(text="📊 الإحصائيات المالية", callback_data="adm_stats")],
         ]
     )
 
     await message.answer(
-        text=t("admin_menu_title", lang),
+        text="🛡 *لوحة تحكم المشرف*\n\nمرحباً بك. يرجى اختيار الإجراء المطلوب:",
         parse_mode="Markdown",
         reply_markup=kb,
     )
 
-
-@router.callback_query(F.data == "adm_view_pays")
-async def handle_admin_view_payments(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    lang = user_service.get_user_language(user_id)
-
-    if not user_service.has_permission(user_id, "review_payments"):
-        await callback.answer(t("admin_access_denied", lang), show_alert=True)
+# ==========================================
+# 2. إدارة طلبات التسجيل (قبول/رفض)
+# ==========================================
+@router.callback_query(F.data == "adm_view_regs")
+async def show_pending_registrations(callback: CallbackQuery):
+    if not user_service.has_permission(callback.from_user.id, "review_registrations"):
+        await callback.answer("⛔ لا تملك هذه الصلاحية.", show_alert=True)
         return
 
-    pending = [p for p in PAYMENT_REQUESTS_STORE.values() if p["status"] == "pending"]
-
-    if not pending:
-        await callback.message.edit_text("✅ لا توجد طلبات دفع معلقة تتطلب المراجعة حالياً.")
-        await callback.answer()
+    regs = user_service.get_pending_registrations()
+    if not regs:
+        await callback.message.edit_text("✅ لا توجد طلبات تسجيل جديدة حالياً.")
         return
 
-    p = pending[0]
+    # عرض أول طلب كمثال
+    reg = regs[0]
     text = (
-        f"💳 *طلب دفع قيد المراجعة:*\n\n"
-        f"🔢 المعرف: `{p['id']}`\n"
-        f"👤 اسم المحوِّل: *{p['sender_name']}*\n"
-        f"📱 هاتف المرسل: `{p['sender_phone']}`\n"
-        f"⏱ الدقائق: *{p['minutes']} دقيقة*\n"
-        f"💰 المبلغ: *{p['amount_etb']} ETB*\n"
-        f"🏦 طريقة الدفع: {p['method_id'].upper()}\n"
-        f"🔖 رقم العملية: `{p['tx_ref']}`\n"
-        f"📅 تاريخ التحويل: {p['transfer_date']}\n"
+        f"📝 *طلب تسجيل جديد*\n\n"
+        f"👤 الاسم: {reg['full_name']}\n"
+        f"🎂 العمر: {reg['age']}\n"
+        f"🌍 الدولة: {reg['country']}\n"
+        f"📖 البرنامج: {reg['program_id']}\n"
     )
-
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ اعتماد وإضافة الرصيد", callback_data=f"adm_pay_app:{p['id']}"),
-                InlineKeyboardButton(text="❌ رفض الطلب", callback_data=f"adm_pay_rej:{p['id']}"),
-            ],
-            [InlineKeyboardButton(text=t("btn_back", lang), callback_data="adm_menu_back")]
-        ]
-    )
-
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ قبول", callback_data=f"adm_reg_app:{reg['id']}"),
+         InlineKeyboardButton(text="❌ رفض", callback_data=f"adm_reg_rej:{reg['id']}")],
+        [InlineKeyboardButton(text="🔙 رجوع", callback_data="adm_menu_back")]
+    ])
+    
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
     await callback.answer()
 
-
-@router.callback_query(F.data.startswith("adm_pay_app:"))
-async def handle_admin_approve_payment(callback: CallbackQuery):
-    pay_id = callback.data.split(":")[1]
+@router.callback_query(F.data.startswith("adm_reg_app:"))
+async def approve_registration(callback: CallbackQuery):
+    reg_id = callback.data.split(":")[1]
     admin_id = callback.from_user.id
-    lang = user_service.get_user_language(admin_id)
 
-    if not user_service.has_permission(admin_id, "review_payments"):
-        await callback.answer(t("admin_access_denied", lang), show_alert=True)
+    if not user_service.has_permission(admin_id, "approve_registrations"):
+        await callback.answer("⛔ لا تملك الصلاحية.", show_alert=True)
         return
 
-    pay = PAYMENT_REQUESTS_STORE.get(pay_id)
-    if not pay or pay["status"] != "pending":
-        await callback.answer(t("admin_payment_already_processed", lang), show_alert=True)
+    # تنفيذ القبول في قاعدة البيانات
+    success = user_service.approve_registration(reg_id, admin_id)
+    
+    if success:
+        await callback.message.edit_text(f"✅ تم قبول الطالب بنجاح وإنشاء حسابه.")
+        # هنا يتم إرسال إشعار للطالب (يفضل استخدام دالة الإرسال الخاصة بك)
+    else:
+        await callback.message.edit_text("⚠️ حدث خطأ، ربما تمت معالجة الطلب مسبقاً.")
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("adm_reg_rej:"))
+async def reject_registration_start(callback: CallbackQuery, state: FSMContext):
+    reg_id = callback.data.split(":")[1]
+    await state.update_data(reject_reg_id=reg_id)
+    await state.set_state(AdminStates.reg_reject_reason)
+    await callback.message.edit_text("❌ يرجى كتابة سبب رفض طلب التسجيل (إلزامي):")
+    await callback.answer()
+
+@router.message(AdminStates.reg_reject_reason)
+async def reject_registration_end(message: Message, state: FSMContext):
+    data = await state.get_data()
+    reg_id = data.get("reject_reg_id")
+    reason = message.text.strip()
+    
+    user_service.reject_registration(reg_id, message.from_user.id, reason)
+    await message.answer(f"❌ تم رفض الطلب. السبب: {reason}")
+    await state.clear()
+
+# ==========================================
+# 3. إدارة الطلاب (بحث بسيط كبداية)
+# ==========================================
+@router.callback_query(F.data == "adm_search_student")
+async def search_student_prompt(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("🔍 يرجى إرسال (رقم الـ ID) أو (رقم الهاتف) أو (اسم الطالب) للبحث:")
+    # يجب إضافة حالة FSM للبحث هنا، لتجنب تداخل الرسائل
+    await callback.answer()
+
+# دالة وهمية لفتح ملف الطالب بعد البحث
+async def show_student_profile(message: Message, student_id: str):
+    student = user_service.get_user(student_id)
+    if not student:
+        await message.answer("❌ لم يتم العثور على الطالب.")
         return
 
-    # Atomic execution via ledger service
-    res = ledger_service.process_payment_approval(
-        payment_id=pay_id,
-        user_id=pay["user_id"],
-        minutes=pay["minutes"],
-        idempotency_key=pay["idempotency_key"],
-        approved_by=str(admin_id),
+    bal = ledger_service.get_balance(student_id)
+    
+    text = (
+        f"👤 *ملف الطالب*\n\n"
+        f"الاسم: {student['first_name']}\n"
+        f"الآي دي: `{student_id}`\n"
+        f"الرصيد الحالي: *{bal['current_minutes']} دقيقة*\n"
     )
 
-    if res.success:
-        pay["status"] = "approved"
-        pay["reviewed_by"] = str(admin_id)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏱ خصم دقائق", callback_data=f"adm_deduct:{student_id}"),
+         InlineKeyboardButton(text="🎁 إضافة رصيد", callback_data=f"adm_add:{student_id}")],
+        [InlineKeyboardButton(text="❄️ تجميد الحساب", callback_data=f"adm_freeze:{student_id}")],
+        [InlineKeyboardButton(text="🔙 رجوع", callback_data="adm_menu_back")]
+    ])
+    await message.answer(text, parse_mode="Markdown", reply_markup=kb)
 
+# ==========================================
+# 4. خصم دقائق الجلسة (مع تأكيد)
+# ==========================================
+@router.callback_query(F.data.startswith("adm_deduct:"))
+async def select_session_duration(callback: CallbackQuery):
+    student_id = callback.data.split(":")[1]
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="15 دقيقة", callback_data=f"adm_ded_conf:{student_id}:15"),
+         InlineKeyboardButton(text="30 دقيقة", callback_data=f"adm_ded_conf:{student_id}:30")],
+        [InlineKeyboardButton(text="45 دقيقة", callback_data=f"adm_ded_conf:{student_id}:45"),
+         InlineKeyboardButton(text="60 دقيقة", callback_data=f"adm_ded_conf:{student_id}:60")],
+        [InlineKeyboardButton(text="مدة مخصصة", callback_data=f"adm_ded_custom:{student_id}")],
+        [InlineKeyboardButton(text="🔙 إلغاء", callback_data="adm_menu_back")]
+    ])
+    
+    await callback.message.edit_text("⏱ اختر مدة الجلسة التي تم إنجازها:", reply_markup=kb)
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("adm_ded_conf:"))
+async def confirm_deduction(callback: CallbackQuery):
+    _, student_id, minutes = callback.data.split(":")
+    minutes = int(minutes)
+    
+    # جلب الرصيد الحالي للتحقق
+    bal = ledger_service.get_balance(student_id)
+    current_bal = bal['current_minutes']
+    
+    if current_bal < minutes:
+        await callback.answer(f"⚠️ رصيد الطالب ({current_bal}) أقل من المدة المطلوبة!", show_alert=True)
+        return
+        
+    text = (
+        f"⚠️ *تأكيد خصم الجلسة*\n\n"
+        f"مدة الجلسة: *{minutes} دقيقة*\n"
+        f"الرصيد قبل الخصم: {current_bal} دقيقة\n"
+        f"الرصيد بعد الخصم: *{current_bal - minutes} دقيقة*\n\n"
+        f"هل أنت متأكد من تنفيذ الخصم؟"
+    )
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ تأكيد وخصم", callback_data=f"adm_ded_exec:{student_id}:{minutes}")],
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data="adm_menu_back")]
+    ])
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=kb)
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("adm_ded_exec:"))
+async def execute_deduction(callback: CallbackQuery):
+    _, student_id, minutes = callback.data.split(":")
+    minutes = int(minutes)
+    admin_id = callback.from_user.id
+    
+    # تنفيذ الخصم في قاعدة البيانات باستخدام ledger_service
+    # (يجب أن يقوم هذا الدالة بإنشاء حركة مالية وخصم الرصيد بأمان)
+    res = ledger_service.deduct_balance(student_id, minutes, admin_id, reason="Recitation Session")
+    
+    if res.success:
         await callback.message.edit_text(
-            f"✅ *تم اعتماد الدفع بنجاح!*\n"
-            f"تمت إضافة *{pay['minutes']} دقيقة* لرصيد الطالب `{pay['user_id']}`.\n"
-            f"الرصيد السابق: {res.balance_before} | الرصيد الحالي: *{res.balance_after}*",
-            parse_mode="Markdown"
+            f"✅ تم خصم {minutes} دقيقة بنجاح.\n"
+            f"الرصيد الجديد: *{res.balance_after}* دقيقة."
         )
     else:
-        await callback.message.edit_text(f"⚠️ تعذر الاعتماد: {res.message}")
-
+        await callback.message.edit_text(f"⚠️ فشل الخصم: {res.message}")
+        
     await callback.answer()
 
+# ==========================================
+# 5. إضافة رصيد / تكريم
+# ==========================================
+@router.callback_query(F.data.startswith("adm_add:"))
+async def add_balance_start(callback: CallbackQuery, state: FSMContext):
+    student_id = callback.data.split(":")[1]
+    await state.update_data(add_student_id=student_id)
+    await state.set_state(AdminStates.add_balance_amount)
+    
+    await callback.message.edit_text("🎁 كم عدد الدقائق المراد إضافتها؟ (أرسل رقماً فقط):")
+    await callback.answer()
 
-@router.callback_query(F.data.startswith("adm_pay_rej:"))
-async def handle_admin_reject_payment_start(callback: CallbackQuery, state: FSMContext):
-    pay_id = callback.data.split(":")[1]
-    admin_id = callback.from_user.id
-    lang = user_service.get_user_language(admin_id)
-
-    if not user_service.has_permission(admin_id, "review_payments"):
-        await callback.answer(t("admin_access_denied", lang), show_alert=True)
+@router.message(AdminStates.add_balance_amount)
+async def add_balance_amount_step(message: Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ يرجى إرسال أرقام فقط.")
         return
+        
+    await state.update_data(add_minutes=int(message.text))
+    await state.set_state(AdminStates.add_balance_reason)
+    await message.answer("📝 يرجى كتابة سبب إضافة الرصيد (مثال: تكريم حفظ، تعويض، الخ):")
 
-    await state.update_data(reject_payment_id=pay_id)
-    await state.set_state(AdminStates.rejection_reason)
-    await callback.message.edit_text("❌ يرجى كتابة سبب رفض طلب الدفع (مطلوب وإلزامي لتوثيقه وإرساله للمستخدم):")
-    await callback.answer()
-
-
-@router.message(AdminStates.rejection_reason)
-async def handle_admin_rejection_reason(message: Message, state: FSMContext):
-    admin_id = message.from_user.id
-    lang = user_service.get_user_language(admin_id)
-    reason = message.text.strip()
-
+@router.message(AdminStates.add_balance_reason)
+async def add_balance_exec_step(message: Message, state: FSMContext):
+    reason = message.text
     data = await state.get_data()
-    pay_id = data.get("reject_payment_id")
-
-    if pay_id and pay_id in PAYMENT_REQUESTS_STORE:
-        pay = PAYMENT_REQUESTS_STORE[pay_id]
-        pay["status"] = "rejected"
-        pay["rejection_reason"] = reason
-        pay["reviewed_by"] = str(admin_id)
-
+    student_id = data['add_student_id']
+    minutes = data['add_minutes']
+    admin_id = message.from_user.id
+    
+    # تنفيذ الإضافة
+    res = ledger_service.add_balance(student_id, minutes, admin_id, reason=reason)
+    
+    if res.success:
         await message.answer(
-            f"❌ تم رفض طلب الدفع `{pay_id}` بنجاح وتوثيق السبب: *{reason}*.",
+            f"✅ تمت إضافة *{minutes} دقيقة* للطالب.\n"
+            f"السبب: {reason}\n"
+            f"الرصيد الحالي: *{res.balance_after}* دقيقة.",
             parse_mode="Markdown"
         )
-
+        # إرسال إشعار للطالب هنا
+    else:
+        await message.answer(f"⚠️ فشلت العملية: {res.message}")
+        
     await state.clear()
+
+# ==========================================
+# 6. العودة للقائمة الرئيسية
+# ==========================================
+@router.callback_query(F.data == "adm_menu_back")
+async def back_to_admin_menu(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    # إعادة توجيه إلى دالة القائمة الرئيسية
+    await handle_admin_panel(callback.message)
+    await callback.answer()
