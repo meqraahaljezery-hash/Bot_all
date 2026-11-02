@@ -1,6 +1,6 @@
 """
 Centralized User, Identity & Role-Based Access Control (RBAC) Service.
-Now fully integrated with Supabase Database.
+Fully integrated with Supabase Database.
 """
 
 from typing import Optional, Set, Dict, Any, List
@@ -9,7 +9,6 @@ from bot.services.database import supabase
 
 class UserService:
     def __init__(self):
-        # الصلاحيات ثابتة في الكود (لا تحتاج قاعدة بيانات)
         self._permissions: Dict[str, Set[str]] = {
             "super_admin": {
                 "manage_users", "review_registrations", "review_payments",
@@ -47,21 +46,25 @@ class UserService:
     ) -> Dict[str, Any]:
         telegram_id = int(telegram_id)
         
-        # 1. البحث عن المستخدم في قاعدة البيانات
         try:
             response = supabase.table('users').select('*').eq('telegram_id', telegram_id).execute()
             
             if response.data:
-                return response.data[0]
+                user = response.data[0]
+                # 🔥 إجبار ترقية السوبر أدمن حتى لو كان مسجلاً سابقاً
+                if settings.SUPER_ADMIN_TELEGRAM_ID and telegram_id == settings.SUPER_ADMIN_TELEGRAM_ID:
+                    if user.get("role") != "super_admin,teacher":
+                        supabase.table('users').update({"role": "super_admin,teacher"}).eq('telegram_id', telegram_id).execute()
+                        user["role"] = "super_admin,teacher"
+                return user
         except Exception as e:
             print(f"⚠️ خطأ في جلب المستخدم من Supabase: {e}")
-            # إرجاع قاموس مؤقت لتجنب توقف البوت إذا فشلت قاعدة البيانات
             return {"telegram_id": telegram_id, "first_name": first_name or "طالب", "role": "student", "preferred_language": "ar"}
 
-        # 2. إذا لم يكن موجوداً، نقوم بإنشائه
+        # إذا لم يكن موجوداً، نقوم بإنشائه
         default_role = "student"
         if settings.SUPER_ADMIN_TELEGRAM_ID and telegram_id == settings.SUPER_ADMIN_TELEGRAM_ID:
-            default_role = "super_admin,teacher" # السوبر أدمن يمتلك صلاحيات المعلم أيضاً
+            default_role = "super_admin,teacher"
 
         new_user = {
             "telegram_id": telegram_id,
@@ -78,7 +81,7 @@ class UserService:
             return insert_res.data[0]
         except Exception as e:
             print(f"⚠️ خطأ في إنشاء مستخدم جديد: {e}")
-            return new_user # إرجاع البيانات محلياً كحل مؤقت
+            return new_user
 
     def get_user(self, telegram_id: int) -> Optional[Dict[str, Any]]:
         try:
@@ -111,7 +114,6 @@ class UserService:
         if not user or not user.get("role"):
             return {"student"}
         
-        # فصل الأدوار المخزنة كنص (مثلاً "super_admin,teacher" -> {"super_admin", "teacher"})
         roles_str = user.get("role", "student")
         return set(roles_str.split(","))
 
@@ -168,20 +170,17 @@ class UserService:
 
     def approve_registration(self, reg_id: str, admin_id: int) -> bool:
         try:
-            # 1. جلب تفاصيل الطلب
             reg_res = supabase.table('registrations').select('*').eq('id', reg_id).execute()
             if not reg_res.data:
                 return False
                 
             reg = reg_res.data[0]
             
-            # 2. تحديث حالة الطلب
             supabase.table('registrations').update({
                 "status": "approved",
                 "reviewed_by": int(admin_id)
             }).eq('id', reg_id).execute()
 
-            # 3. ترقية المستخدم (إذا كان موجوداً) أو إنشاؤه كطالب
             if reg.get('user_id'):
                 supabase.table('users').update({"role": "student"}).eq('telegram_id', int(reg['user_id'])).execute()
 
