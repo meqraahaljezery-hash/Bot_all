@@ -10,10 +10,13 @@ pydantic>=2.10.0,<3.0.0
 pydantic-settings>=2.7.0,<3.0.0
 python-dotenv>=1.0.1
 
-# Database & ORM
+# Database & ORM (For traditional SQL if needed)
 SQLAlchemy>=2.0.36,<3.0.0
 asyncpg>=0.30.0,<1.0.0
 alembic>=1.14.0,<2.0.0
+
+# Supabase Client (For our new Cloud Database Integration)
+supabase>=2.4.0
 
 # Web & API Framework for Webhook / Admin API
 fastapi>=0.115.0,<1.0.0
