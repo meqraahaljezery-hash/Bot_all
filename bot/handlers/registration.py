@@ -1,6 +1,6 @@
 """
-Registration Handler - Strict FSM & Inline Callbacks
-Saves data to Supabase as 'pending' and notifies supervisors.
+Registration Handler - Strict FSM, Multilingual & Inline Callbacks
+Saves data to Supabase as 'pending'.
 """
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
@@ -8,13 +8,12 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from bot.keyboards.reply import get_cancel_keyboard
 from bot.services.database import supabase
+from bot.services.user_service import user_service
+from bot.locales.i18n import t
 from bot.config import settings
 
 router = Router(name="registration_router")
 
-# ==========================================
-# حالات التسجيل (FSM States)
-# ==========================================
 class RegStates(StatesGroup):
     full_name = State()
     age = State()
@@ -27,153 +26,137 @@ class RegStates(StatesGroup):
     memorization = State()
     review = State()
 
-# ==========================================
-# 1. بدء التسجيل
-# ==========================================
 @router.message(F.text.in_(["📝 التسجيل", "📝 Register", "📝 ምዝገባ"]))
 async def start_registration(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer(
-        "📝 *استمارة التسجيل*\n\nالرجاء إدخال اسمك الكامل (الثلاثي):",
-        parse_mode="Markdown",
-        reply_markup=get_cancel_keyboard()
-    )
+    lang = user_service.get_user_language(message.from_user.id)
+    await message.answer(t("reg_enter_name", lang), reply_markup=get_cancel_keyboard(lang))
     await state.set_state(RegStates.full_name)
 
-# ==========================================
-# 2. إدخال الاسم والعمر والدولة والهاتف (نصوص)
-# ==========================================
 @router.message(RegStates.full_name)
 async def process_name(message: Message, state: FSMContext):
-    if message.text == "❌ إلغاء":
-        await cancel_registration(message, state)
+    lang = user_service.get_user_language(message.from_user.id)
+    if message.text in ["❌ إلغاء", "❌ Cancel", "❌ ሰርዝ"]:
+        await state.clear()
+        await message.answer("❌ Cancelled.")
         return
     await state.update_data(full_name=message.text)
-    await message.answer("🎂 كم عمرك؟ (أرقام فقط):")
+    await message.answer(t("reg_enter_age", lang))
     await state.set_state(RegStates.age)
 
 @router.message(RegStates.age)
 async def process_age(message: Message, state: FSMContext):
+    lang = user_service.get_user_language(message.from_user.id)
     if not message.text.isdigit():
-        await message.answer("❌ يرجى إدخال العمر بالأرقام فقط.")
+        await message.answer(t("reg_invalid_age", lang))
         return
     await state.update_data(age=int(message.text))
-    await message.answer("🌍 ما هي دولتك؟")
+    await message.answer(t("reg_enter_country", lang))
     await state.set_state(RegStates.country)
 
 @router.message(RegStates.country)
 async def process_country(message: Message, state: FSMContext):
+    lang = user_service.get_user_language(message.from_user.id)
     await state.update_data(country=message.text)
     
-    # استخدام الأزرار التفاعلية للجنس (يمنع الخلط مع النصوص)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👨 ذكر", callback_data="reg_gender_male")],
-        [InlineKeyboardButton(text="👩 أنثى", callback_data="reg_gender_female")]
+        [InlineKeyboardButton(text=t("reg_male", lang), callback_data="reg_gender_male")],
+        [InlineKeyboardButton(text=t("reg_female", lang), callback_data="reg_gender_female")]
     ])
-    await message.answer("⚧ يرجى اختيار الجنس:", reply_markup=kb)
+    await message.answer(t("reg_choose_gender", lang), reply_markup=kb)
     await state.set_state(RegStates.gender)
 
 @router.callback_query(RegStates.gender, F.data.startswith("reg_gender_"))
 async def process_gender(callback: CallbackQuery, state: FSMContext):
+    lang = user_service.get_user_language(callback.from_user.id)
     gender = "male" if callback.data == "reg_gender_male" else "female"
     await state.update_data(gender=gender)
-    await callback.message.edit_text("📱 يرجى إدخال رقم هاتفك (مع رمز الدولة):")
+    await callback.message.edit_text(t("reg_enter_phone", lang))
     await state.set_state(RegStates.phone)
     await callback.answer()
 
 @router.message(RegStates.phone)
 async def process_phone(message: Message, state: FSMContext):
+    lang = user_service.get_user_language(message.from_user.id)
     await state.update_data(phone=message.text)
     
-    # اختيار البرنامج من الإعدادات أو قاعدة البيانات
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📖 التلقين وتصحيح الأداء", callback_data="reg_prog_talqeen")],
-        [InlineKeyboardButton(text="📖 الحفظ المكثف", callback_data="reg_prog_hifz")],
-        [InlineKeyboardButton(text="🎓 الإجازة برواية حفص", callback_data="reg_prog_ijazah_hafs")],
-        [InlineKeyboardButton(text="🎓 الإجازة بالقراءات السبع", callback_data="reg_prog_ijazah_sabaa")]
+        [InlineKeyboardButton(text="📖 " + t("prog_talqeen", lang), callback_data="reg_prog_talqeen")],
+        [InlineKeyboardButton(text="📖 " + t("prog_hifz", lang), callback_data="reg_prog_hifz")],
+        [InlineKeyboardButton(text="🎓 " + t("prog_ijazah_hafs", lang), callback_data="reg_prog_ijazah_hafs")],
+        [InlineKeyboardButton(text="🎓 " + t("prog_ijazah_sabaa", lang), callback_data="reg_prog_ijazah_sabaa")]
     ])
-    await message.answer("📚 يرجى اختيار البرنامج التعليمي:", reply_markup=kb)
+    await message.answer(t("reg_choose_program", lang), reply_markup=kb)
     await state.set_state(RegStates.program)
 
-# ==========================================
-# 3. اختيارات الأزرار (البرنامج، الفترة، المستوى، الحفظ)
-# ==========================================
 @router.callback_query(RegStates.program, F.data.startswith("reg_prog_"))
 async def process_program(callback: CallbackQuery, state: FSMContext):
+    lang = user_service.get_user_language(callback.from_user.id)
     program = callback.data.replace("reg_prog_", "")
     await state.update_data(program_id=program)
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌅 الفترة الصباحية", callback_data="reg_period_morning")],
-        [InlineKeyboardButton(text="🌇 الفترة المسائية", callback_data="reg_period_evening")],
-        [InlineKeyboardButton(text="🌙 الفترة الليلية", callback_data="reg_period_night")]
+        [InlineKeyboardButton(text=t("reg_morning", lang), callback_data="reg_period_morning")],
+        [InlineKeyboardButton(text=t("reg_evening", lang), callback_data="reg_period_evening")],
+        [InlineKeyboardButton(text=t("reg_night", lang), callback_data="reg_period_night")]
     ])
-    await callback.message.edit_text("⏰ اختر الفترة التعليمية المناسبة لك:", reply_markup=kb)
+    await callback.message.edit_text(t("reg_choose_period", lang), reply_markup=kb)
     await state.set_state(RegStates.period)
     await callback.answer()
 
 @router.callback_query(RegStates.period, F.data.startswith("reg_period_"))
 async def process_period(callback: CallbackQuery, state: FSMContext):
+    lang = user_service.get_user_language(callback.from_user.id)
     period = callback.data.replace("reg_period_", "")
     await state.update_data(period=period)
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌱 مبتدئ", callback_data="reg_level_beginner")],
-        [InlineKeyboardButton(text="🌿 متوسط", callback_data="reg_level_intermediate")],
-        [InlineKeyboardButton(text="🌳 متقدم", callback_data="reg_level_advanced")],
-        [InlineKeyboardButton(text="🎓 مجاز", callback_data="reg_level_ijazah")]
+        [InlineKeyboardButton(text=t("level_beginner", lang), callback_data="reg_level_beginner")],
+        [InlineKeyboardButton(text=t("level_intermediate", lang), callback_data="reg_level_intermediate")],
+        [InlineKeyboardButton(text=t("level_advanced", lang), callback_data="reg_level_advanced")],
+        [InlineKeyboardButton(text=t("level_ijazah", lang), callback_data="reg_level_ijazah")]
     ])
-    await callback.message.edit_text("📈 ما هو مستواك القرآني الحالي؟", reply_markup=kb)
+    await callback.message.edit_text(t("reg_choose_level", lang), reply_markup=kb)
     await state.set_state(RegStates.level)
     await callback.answer()
 
 @router.callback_query(RegStates.level, F.data.startswith("reg_level_"))
 async def process_level(callback: CallbackQuery, state: FSMContext):
+    lang = user_service.get_user_language(callback.from_user.id)
     level = callback.data.replace("reg_level_", "")
     await state.update_data(level=level)
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="0 - لم أحفظ بعد", callback_data="reg_mem_none")],
-        [InlineKeyboardButton(text="1-5 أجزاء", callback_data="reg_mem_1_5")],
-        [InlineKeyboardButton(text="6-10 أجزاء", callback_data="reg_mem_6_10")],
-        [InlineKeyboardButton(text="11-20 جزءاً", callback_data="reg_mem_11_20")],
-        [InlineKeyboardButton(text="21-30 جزءاً", callback_data="reg_mem_21_30")],
-        [InlineKeyboardButton(text="🕌 حافظ كامل", callback_data="reg_mem_full")]
+        [InlineKeyboardButton(text=t("mem_none", lang), callback_data="reg_mem_none")],
+        [InlineKeyboardButton(text=t("mem_1_5", lang), callback_data="reg_mem_1_5")],
+        [InlineKeyboardButton(text=t("mem_full", lang), callback_data="reg_mem_full")]
     ])
-    await callback.message.edit_text("📖 كم مقدار الحفظ السابق لديك؟", reply_markup=kb)
+    await callback.message.edit_text(t("reg_choose_mem", lang), reply_markup=kb)
     await state.set_state(RegStates.memorization)
     await callback.answer()
 
-# ==========================================
-# 4. المراجعة النهائية والإرسال إلى Supabase
-# ==========================================
 @router.callback_query(RegStates.memorization, F.data.startswith("reg_mem_"))
 async def process_memorization(callback: CallbackQuery, state: FSMContext):
+    lang = user_service.get_user_language(callback.from_user.id)
     mem = callback.data.replace("reg_mem_", "")
     await state.update_data(memorization=mem)
     
-    # جلب جميع البيانات وعرضها للمراجعة
     data = await state.get_data()
-    
     summary = (
-        f"📝 *مراجعة بيانات التسجيل:*\n\n"
-        f"👤 الاسم: {data['full_name']}\n"
-        f"🎂 العمر: {data['age']}\n"
-        f"🌍 الدولة: {data['country']}\n"
-        f"⚧ الجنس: {data['gender']}\n"
-        f"📱 الهاتف: {data['phone']}\n"
-        f"📚 البرنامج: {data['program_id']}\n"
-        f"⏰ الفترة: {data['period']}\n"
-        f"📈 المستوى: {data['level']}\n"
-        f"📖 الحفظ: {data['memorization']}\n\n"
-        f"هل أنت متأكد من إرسال الطلب؟"
+        f"📝 *{t('reg_review_title', lang)}*\n\n"
+        f"👤 {t('reg_name', lang)}: {data['full_name']}\n"
+        f"🎂 {t('reg_age', lang)}: {data['age']}\n"
+        f"🌍 {t('reg_country', lang)}: {data['country']}\n"
+        f"⚧ {t('reg_gender', lang)}: {t('reg_male', lang) if data['gender'] == 'male' else t('reg_female', lang)}\n"
+        f"📱 {t('reg_phone', lang)}: {data['phone']}\n"
+        f"📚 {t('reg_program', lang)}: {data['program_id']}\n"
+        f"⏰ {t('reg_period', lang)}: {data['period']}\n"
     )
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ تأكيد وإرسال", callback_data="reg_submit")],
-        [InlineKeyboardButton(text="❌ إلغاء", callback_data="reg_cancel")]
+        [InlineKeyboardButton(text=t("reg_confirm_btn", lang), callback_data="reg_submit")],
+        [InlineKeyboardButton(text=t("reg_cancel_btn", lang), callback_data="reg_cancel")]
     ])
-    
     await callback.message.edit_text(summary, parse_mode="Markdown", reply_markup=kb)
     await state.set_state(RegStates.review)
     await callback.answer()
@@ -182,8 +165,8 @@ async def process_memorization(callback: CallbackQuery, state: FSMContext):
 async def submit_registration(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     user_id = callback.from_user.id
+    lang = user_service.get_user_language(user_id)
     
-    # حفظ البيانات في جدول registrations في Supabase
     try:
         reg_data = {
             "user_id": user_id,
@@ -192,47 +175,24 @@ async def submit_registration(callback: CallbackQuery, state: FSMContext):
             "country": data['country'],
             "gender": data['gender'],
             "program_id": data['program_id'],
+            "period": data['period'],
             "status": "pending"
         }
+        supabase.table('registrations').insert(reg_data).execute()
         
-        response = supabase.table('registrations').insert(reg_data).execute()
-        reg_id = response.data[0]['id']
-        
-        # إرسال إشعار للسوبر أدمن أو المشرفين
-        try:
-            await callback.bot.send_message(
-                chat_id=settings.SUPER_ADMIN_TELEGRAM_ID,
-                text=f"🔔 *طلب تسجيل جديد!*\n"
-                     f"الاسم: {data['full_name']}\n"
-                     f"البرنامج: {data['program_id']}\n"
-                     f"رقم الطلب: `{reg_id}`\n"
-                     f"يرجى الدخول للوحة الإدارة للمراجعة.",
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            print(f"فشل إرسال الإشعار: {e}")
-
-        await callback.message.edit_text(
-            "✅ *تم إرسال طلب التسجيل بنجاح.*\n\n"
-            "طلبك الآن قيد مراجعة إدارة المقرأة. سيتم إشعارك عند اتخاذ القرار.\n"
-            "تنبيه: إرسال الطلب لا يعني قبول التسجيل.",
-            parse_mode="Markdown"
+        await callback.bot.send_message(
+            chat_id=settings.SUPER_ADMIN_TELEGRAM_ID,
+            text=f"🔔 *طلب تسجيل جديد!*\nالاسم: {data['full_name']}\nالفترة: {data['period']}"
         )
+        await callback.message.edit_text(t("reg_success", lang))
     except Exception as e:
-        await callback.message.edit_text(f"⚠️ حدث خطأ أثناء حفظ الطلب: {str(e)}")
+        await callback.message.edit_text(f"⚠️ Error: {str(e)}")
     
     await state.clear()
     await callback.answer()
 
-# ==========================================
-# 5. إلغاء التسجيل
-# ==========================================
 @router.callback_query(F.data == "reg_cancel")
 async def cancel_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text("❌ تم إلغاء طلب التسجيل.")
+    await callback.message.edit_text("❌ Cancelled.")
     await callback.answer()
-
-async def cancel_registration(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("❌ تم إلغاء طلب التسجيل.")
