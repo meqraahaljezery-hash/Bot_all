@@ -9,11 +9,12 @@ from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Update
 
 from bot.config import settings
 from bot.services.database import supabase
 from bot.services.ledger_service import ledger_service
+from bot.services.user_service import user_service
 from bot.locales.i18n import t
 
 # استيراد الـ Middlewares والـ Routers
@@ -64,13 +65,9 @@ async def send_low_balance_alerts(bot: Bot):
                 bal = ledger_service.get_balance(uid)['current_minutes']
                 
                 if bal <= 15:
-                    lang = t.get_user_language(uid) if hasattr(t, 'get_user_language') else "ar"
-                    # نستخدم user_service لجلب اللغة الحقيقية
-                    from bot.services.user_service import user_service
                     lang = user_service.get_user_language(uid)
-                    
                     kb = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🆘 طلب سلفة (15 دقيقة)" if lang=="ar" else "🆘 Request Loan", callback_data="req_loan")],
+                        [InlineKeyboardButton(text=t("loan_btn", lang), callback_data="req_loan")],
                     ])
                     try:
                         await bot.send_message(uid, t("low_balance_alert", lang, balance=bal), reply_markup=kb)
@@ -88,7 +85,11 @@ async def lifespan(app: FastAPI):
 
     if settings.is_webhook:
         logger.info(f"Setting webhook to {settings.WEBHOOK_URL}")
-        await bot.set_webhook(url=settings.WEBHOOK_URL, secret_token=settings.WEBHOOK_SECRET, drop_pending_updates=True)
+        await bot.set_webhook(
+            url=settings.WEBHOOK_URL, 
+            secret_token=settings.WEBHOOK_SECRET,
+            drop_pending_updates=True  # 🔥 تنظيف الرسائل العالقة
+        )
     
     # تشغيل المهمة في الخلفية
     asyncio.create_task(send_low_balance_alerts(bot))
@@ -110,13 +111,20 @@ async def telegram_webhook(request: Request):
     bot: Bot = request.app.state.bot
     dp: Dispatcher = request.app.state.dp
     secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    
     if secret != settings.WEBHOOK_SECRET:
         return Response(status_code=403, content="Forbidden")
 
     data = await request.json()
-    from aiogram.types import Update
     update = Update.model_validate(data, context={"bot": bot})
-    await dp.feed_update(bot, update)
+    
+    try:
+        await dp.feed_update(bot, update)
+    except Exception as e:
+        logger.error(f"Error handling update: {e}")
+        # نرجع 200 حتى لا تعيد تيليجرام المحاولة وتتسبب في خطأ 500 متكرر
+        return {"ok": True} 
+        
     return {"ok": True}
 
 async def main():
