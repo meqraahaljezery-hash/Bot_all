@@ -20,6 +20,7 @@ import {
 
 export type NavTab =
   | 'overview'
+  | 'students_directory'
   | 'registrations'
   | 'payments'
   | 'balances'
@@ -54,6 +55,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const navItems = [
     { id: 'overview' as NavTab, label: 'لوحة المعلومات', icon: LayoutDashboard },
+    {
+      id: 'students_directory' as NavTab,
+      label: 'قائمة الطلاب بالأزرار',
+      icon: GraduationCap,
+      badge: 'جديد',
+      badgeColor: 'bg-emerald-600 text-white font-bold',
+    },
     {
       id: 'registrations' as NavTab,
       label: 'طلبات التسجيل',

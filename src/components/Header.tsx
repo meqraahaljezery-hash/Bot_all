@@ -1,71 +1,102 @@
 import React from 'react';
-import { Shield, BookOpen, Phone, Mail, Globe, Bot } from 'lucide-react';
+import { Shield, BookOpen, Phone, Mail, Globe, Bot, Download, Smartphone, ArrowLeftRight, User } from 'lucide-react';
 import { Language } from '../types';
 
 interface HeaderProps {
   currentLang: Language;
   onLanguageChange: (lang: Language) => void;
   onOpenSimulator: () => void;
+  onOpenPwaModal: () => void;
+  onOpenSupervisorAuth: () => void;
+  currentViewMode: 'supervisor' | 'student';
+  onToggleViewMode: () => void;
+  supervisorEmail: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   currentLang,
   onLanguageChange,
   onOpenSimulator,
+  onOpenPwaModal,
+  onOpenSupervisorAuth,
+  currentViewMode,
+  onToggleViewMode,
+  supervisorEmail,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-[#105C3B] text-white shadow-md border-b border-[#0B3F28]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           
           {/* Logo & Brand Identity */}
           <div className="flex items-center space-x-3 space-x-reverse">
-            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shadow-inner text-[#DDF2E3]">
-              <BookOpen className="w-6 h-6 text-[#DDF2E3]" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shadow-inner text-[#DDF2E3] shrink-0">
+              <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-[#DDF2E3]" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-base sm:text-xl font-bold tracking-tight text-white font-['Amiri',serif]">
+                <span className="text-sm sm:text-xl font-bold tracking-tight text-white font-['Amiri',serif]">
                   مقرأة الإمام الجزري
                 </span>
-                <span className="hidden sm:inline-block text-xs bg-[#18794E] text-[#DDF2E3] px-2 py-0.5 rounded-full border border-emerald-400/30 font-medium">
-                  لوحة الإدارة الرسمية
+                <span className={`text-[10px] sm:text-xs px-2 py-0.5 rounded-full border font-bold ${
+                  currentViewMode === 'supervisor'
+                    ? 'bg-[#18794E] text-[#DDF2E3] border-emerald-400/30'
+                    : 'bg-amber-400/90 text-stone-900 border-amber-300'
+                }`}>
+                  {currentViewMode === 'supervisor' ? 'لوحة المشرف العام' : 'واجهة الطالب (TMA)'}
                 </span>
               </div>
-              <p className="text-xs text-[#DDF2E3]/90 hidden md:block">
+              <p className="text-[11px] text-[#DDF2E3]/90 hidden md:block">
                 للإقراء والإجازة بالسند المتصل إلى رسول الله ﷺ
               </p>
             </div>
           </div>
 
-          {/* Quick Info & Action Buttons */}
-          <div className="flex items-center gap-3">
+          {/* Quick Action Buttons & Controls */}
+          <div className="flex items-center gap-2 sm:gap-3">
             
-            {/* Official Contact Badges */}
-            <div className="hidden lg:flex items-center gap-4 text-xs text-[#DDF2E3] bg-[#0B3F28]/60 py-1.5 px-3 rounded-lg border border-white/10">
-              <span className="flex items-center gap-1.5" title="الهاتف الرسمي">
-                <Phone className="w-3.5 h-3.5 text-emerald-300" />
-                <span dir="ltr">0990161372</span>
+            {/* PWA / TMA Download Box Button */}
+            <button
+              onClick={onOpenPwaModal}
+              className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white font-bold text-xs py-2 px-2.5 sm:px-3.5 rounded-xl border border-white/20 shadow-xs transition-transform active:scale-95 cursor-pointer"
+              title="صندوق تحميل التطبيق ويباب يدعم عربي"
+            >
+              <Download className="w-4 h-4 text-emerald-300" />
+              <span className="hidden xs:inline">تحميل التطبيق</span>
+              <span className="text-[10px] bg-emerald-500 text-stone-950 px-1.5 py-0.2 rounded font-black">PWA</span>
+            </button>
+
+            {/* Toggle between Supervisor & Student View */}
+            <button
+              onClick={onToggleViewMode}
+              className={`flex items-center gap-1.5 text-xs font-bold py-2 px-2.5 sm:px-3.5 rounded-xl shadow-xs transition-transform active:scale-95 cursor-pointer border ${
+                currentViewMode === 'supervisor'
+                  ? 'bg-amber-400 hover:bg-amber-300 text-stone-950 border-amber-300'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-stone-950 border-emerald-400'
+              }`}
+              title="التبديل بين ما يظهر للطالب وما يظهر للمشرف"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">
+                {currentViewMode === 'supervisor' ? 'عرض واجهة الطالب' : 'عرض لوحة المشرف'}
               </span>
-              <span className="w-px h-3 bg-white/20"></span>
-              <span className="flex items-center gap-1.5" title="البريد المعتمد">
-                <Mail className="w-3.5 h-3.5 text-emerald-300" />
-                <span dir="ltr">kalidahd7@gmil.com</span>
+              <span className="sm:hidden">
+                {currentViewMode === 'supervisor' ? 'طالب' : 'مشرف'}
               </span>
-            </div>
+            </button>
 
             {/* Live Bot Simulator Launcher */}
             <button
               onClick={onOpenSimulator}
-              className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-stone-900 font-semibold text-xs sm:text-sm px-3 sm:px-4 py-2 rounded-lg shadow-sm transition-all duration-150 transform active:scale-95 cursor-pointer"
+              className="hidden lg:flex items-center gap-1.5 bg-emerald-700/80 hover:bg-emerald-600 text-white font-semibold text-xs px-3 py-2 rounded-xl border border-white/15 transition-all cursor-pointer"
             >
-              <Bot className="w-4 h-4 text-stone-950" />
-              <span>محاكي البوت الحي</span>
+              <Bot className="w-3.5 h-3.5" />
+              <span>محاكي البوت</span>
             </button>
 
             {/* Language Selector */}
-            <div className="relative flex items-center bg-[#18794E] rounded-lg p-1 border border-white/15">
-              <Globe className="w-4 h-4 text-[#DDF2E3] ml-1 mr-1 hidden sm:inline" />
+            <div className="relative flex items-center bg-[#18794E] rounded-xl p-1 border border-white/15">
+              <Globe className="w-3.5 h-3.5 text-[#DDF2E3] ml-1 mr-1 hidden sm:inline" />
               <select
                 value={currentLang}
                 onChange={(e) => onLanguageChange(e.target.value as Language)}
@@ -78,14 +109,18 @@ export const Header: React.FC<HeaderProps> = ({
               </select>
             </div>
 
-            {/* Super Admin Badge */}
-            <div className="hidden sm:flex items-center gap-2 bg-white/10 py-1 px-2.5 rounded-lg border border-white/10 text-xs">
-              <Shield className="w-4 h-4 text-amber-300" />
-              <div className="text-right">
-                <span className="block font-semibold text-white">المدير العام</span>
-                <span className="block text-[10px] text-emerald-200">khdahd241@gmail.com</span>
+            {/* Supervisor Account Badge / Auth Button */}
+            <button
+              onClick={onOpenSupervisorAuth}
+              className="flex items-center gap-2 bg-black/20 hover:bg-black/30 py-1.5 px-2.5 rounded-xl border border-white/15 text-xs text-right cursor-pointer transition-colors"
+              title="إدارة حساب المشرف وتغيير كلمة المرور"
+            >
+              <Shield className="w-4 h-4 text-amber-300 shrink-0" />
+              <div className="hidden sm:block">
+                <span className="block font-bold text-white text-[11px] leading-tight">المشرف العام</span>
+                <span className="block text-[10px] text-emerald-200 font-mono leading-tight">{supervisorEmail}</span>
               </div>
-            </div>
+            </button>
 
           </div>
 

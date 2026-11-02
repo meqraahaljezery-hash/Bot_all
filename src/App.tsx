@@ -48,10 +48,28 @@ import { SupportManager } from './components/SupportManager';
 import { AuditLogView } from './components/AuditLogView';
 import { SettingsManager } from './components/SettingsManager';
 import { TelegramBotSimulator } from './components/TelegramBotSimulator';
+import { PwaInstallModal } from './components/PwaInstallModal';
+import { SupervisorStudentsManager } from './components/SupervisorStudentsManager';
+import { StudentPortal } from './components/StudentPortal';
+import { SupervisorAuthModal } from './components/SupervisorAuthModal';
 
 export default function App() {
   const [currentLang, setCurrentLang] = useState<Language>('ar');
   const [activeTab, setActiveTab] = useState<NavTab>('overview');
+  const [currentViewMode, setCurrentViewMode] = useState<'supervisor' | 'student'>('supervisor');
+  const [isPwaModalOpen, setIsPwaModalOpen] = useState(false);
+  const [isSupervisorAuthModalOpen, setIsSupervisorAuthModalOpen] = useState(false);
+
+  // Supervisor Credentials with localStorage persistence
+  const [supervisorEmail] = useState('khdahd241@gmail.com');
+  const superAdminEmail = supervisorEmail;
+  const [supervisorPassword, setSupervisorPassword] = useState(() => {
+    return localStorage.getItem('supervisor_password') || '52504545';
+  });
+  const [isSupervisorLoggedIn, setIsSupervisorLoggedIn] = useState(true);
+
+  // Active student for Student Portal view
+  const [activeStudentId, setActiveStudentId] = useState('usr-4');
 
   // Application State
   const [programs, setPrograms] = useState<EducationalProgram[]>(INITIAL_PROGRAMS);
@@ -71,18 +89,233 @@ export default function App() {
   // Settings State
   const [contactPhone, setContactPhone] = useState('0990161372');
   const [contactEmail, setContactEmail] = useState('kalidahd7@gmil.com');
-  const superAdminEmail = 'khdahd241@gmail.com';
 
   const logAudit = (action: string, entity: string, details: string) => {
     const newLog: AuditLog = {
       id: `aud-${Date.now()}`,
-      actor: `المدير العام (${superAdminEmail})`,
+      actor: `المشرف العام (${supervisorEmail})`,
       action,
       entity,
       details,
       timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
     };
     setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
+  // Supervisor Authentication & Role Management
+  const handleSupervisorLogin = (email: string, pass: string) => {
+    if (email === supervisorEmail && pass === supervisorPassword) {
+      setIsSupervisorLoggedIn(true);
+      setCurrentViewMode('supervisor');
+      return true;
+    }
+    return false;
+  };
+
+  const handleSupervisorLogout = () => {
+    setIsSupervisorLoggedIn(false);
+  };
+
+  const handleSupervisorChangePassword = (newPass: string) => {
+    setSupervisorPassword(newPass);
+    localStorage.setItem('supervisor_password', newPass);
+    logAudit('تغيير كلمة المرور', 'Auth', `تم تحديث كلمة مرور المشرف العام بنجاح`);
+  };
+
+  const handleAssignRole = (userId: string, newRole: any) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+    );
+    const targetUser = users.find((u) => u.id === userId);
+    logAudit('تعيين رتبة وصلاحية', 'Users', `تم تعيين المستخدم ${targetUser?.first_name} برتبة ${newRole}`);
+  };
+
+  // Supervisor Actions on Students (خصم، تكريم، تجميد، حظر، تفعيل)
+  const handleDeductMinutes = (userId: string, minutes: number, reason: string) => {
+    const userObj = users.find((u) => u.id === userId);
+    const targetUid = userObj?.id || userId;
+    const currentBal = balances.find((b) => b.user_id === targetUid || b.user_id === String(userObj?.telegram_id))?.current_minutes || 0;
+    const newBal = Math.max(0, currentBal - minutes);
+
+    setBalances((prev) =>
+      prev.map((b) => {
+        if (b.user_id === targetUid || b.user_id === String(userObj?.telegram_id)) {
+          return {
+            ...b,
+            current_minutes: newBal,
+            total_consumed: b.total_consumed + minutes,
+            is_restricted: newBal <= 0,
+          };
+        }
+        return b;
+      })
+    );
+
+    const newLedgerEntry: BalanceLedgerEntry = {
+      id: `led-${Date.now()}`,
+      user_id: targetUid,
+      student_name: userObj?.first_name || 'طالب',
+      type: 'session_deduction',
+      minutes_change: -minutes,
+      balance_before: currentBal,
+      balance_after: newBal,
+      reason,
+      performed_by: `المشرف (${supervisorEmail})`,
+      created_at: new Date().toISOString().replace('T', ' ').slice(0, 16),
+    };
+    setLedger((prev) => [newLedgerEntry, ...prev]);
+
+    if (newBal <= 0) {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === targetUid ? { ...u, is_frozen: true } : u))
+      );
+    }
+
+    logAudit('خصم دقائق تسميع', 'Balance', `تم خصم ${minutes} دقيقة من الطالب ${userObj?.first_name} (${reason})`);
+  };
+
+  const handleRewardMinutes = (userId: string, minutes: number, reason: string) => {
+    const userObj = users.find((u) => u.id === userId);
+    const targetUid = userObj?.id || userId;
+    const currentBal = balances.find((b) => b.user_id === targetUid || b.user_id === String(userObj?.telegram_id))?.current_minutes || 0;
+    const newBal = currentBal + minutes;
+
+    setBalances((prev) =>
+      prev.map((b) => {
+        if (b.user_id === targetUid || b.user_id === String(userObj?.telegram_id)) {
+          return {
+            ...b,
+            current_minutes: newBal,
+            total_bonus: b.total_bonus + minutes,
+            is_restricted: false,
+          };
+        }
+        return b;
+      })
+    );
+
+    const newLedgerEntry: BalanceLedgerEntry = {
+      id: `led-${Date.now()}`,
+      user_id: targetUid,
+      student_name: userObj?.first_name || 'طالب',
+      type: 'bonus',
+      minutes_change: minutes,
+      balance_before: currentBal,
+      balance_after: newBal,
+      reason,
+      performed_by: `المشرف (${supervisorEmail})`,
+      created_at: new Date().toISOString().replace('T', ' ').slice(0, 16),
+    };
+    setLedger((prev) => [newLedgerEntry, ...prev]);
+
+    // Unfreeze when rewarded
+    setUsers((prev) =>
+      prev.map((u) => (u.id === targetUid ? { ...u, is_frozen: false } : u))
+    );
+
+    logAudit('تكريم طالب بدقائق هدية', 'Balance', `تم منح ${minutes} دقيقة تكريمية لـ ${userObj?.first_name}`);
+  };
+
+  const handleFreezeStudent = (userId: string, reason?: string) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, is_frozen: true } : u))
+    );
+    const userObj = users.find((u) => u.id === userId);
+    logAudit('تجميد وتوقيف طالب', 'Users', `تم تجميد حساب الطالب ${userObj?.first_name}: ${reason || ''}`);
+  };
+
+  const handleBanStudent = (userId: string, reason?: string) => {
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? ({ ...u, is_frozen: true, is_active: false, is_banned: true } as any)
+          : u
+      )
+    );
+    const userObj = users.find((u) => u.id === userId);
+    logAudit('طرد وحظر كلي لطالب', 'Users', `تم طرد وحظر الطالب ${userObj?.first_name}: ${reason || ''}`);
+  };
+
+  const handleActivateStudent = (userId: string) => {
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId
+          ? ({ ...u, is_frozen: false, is_active: true, is_banned: false } as any)
+          : u
+      )
+    );
+    const userObj = users.find((u) => u.id === userId);
+    logAudit('تفعيل حساب طالب', 'Users', `تم تفعيل وتنشيط حساب الطالب ${userObj?.first_name}`);
+  };
+
+  // Student Portal Emergency Loan & Payment
+  const handleStudentRequestLoan = () => {
+    const studentUser = users.find((u) => u.id === activeStudentId) || users.find((u) => u.role === 'student');
+    if (!studentUser) return;
+    const loanMinutes = 15;
+
+    const currentBal = balances.find((b) => b.user_id === studentUser.id || b.user_id === String(studentUser.telegram_id))?.current_minutes || 0;
+    const newBal = currentBal + loanMinutes;
+
+    setBalances((prev) =>
+      prev.map((b) => {
+        if (b.user_id === studentUser.id || b.user_id === String(studentUser.telegram_id)) {
+          return {
+            ...b,
+            current_minutes: newBal,
+            borrowed_minutes: (b.borrowed_minutes || 0) + loanMinutes,
+            is_restricted: false,
+          };
+        }
+        return b;
+      })
+    );
+
+    setUsers((prev) =>
+      prev.map((u) => (u.id === studentUser.id ? { ...u, is_frozen: false } : u))
+    );
+
+    const newLedgerEntry: BalanceLedgerEntry = {
+      id: `led-${Date.now()}`,
+      user_id: studentUser.id,
+      student_name: studentUser.first_name,
+      type: 'emergency_borrow',
+      minutes_change: loanMinutes,
+      balance_before: currentBal,
+      balance_after: newBal,
+      reason: 'سلفة طارئة (15 دقيقة) - تستقطع عند الشحن',
+      performed_by: 'نظام البوت الآلي',
+      created_at: new Date().toISOString().replace('T', ' ').slice(0, 16),
+    };
+    setLedger((prev) => [newLedgerEntry, ...prev]);
+    logAudit('سلفة طارئة', 'Loans', `تم تفعيل سلفة 15 دقيقة للطالب ${studentUser.first_name}`);
+  };
+
+  const handleStudentSubmitPayment = (pkgId: string, amount: number, minutes: number, txRef: string) => {
+    const studentUser = users.find((u) => u.id === activeStudentId) || users.find((u) => u.role === 'student');
+    if (!studentUser) return;
+
+    const pkg = packages.find((p) => p.id === pkgId);
+    const newPay: PaymentRequest = {
+      id: `pay-${Date.now()}`,
+      user_id: studentUser.id,
+      student_name: studentUser.first_name,
+      telegram_id: studentUser.telegram_id,
+      package_id: pkgId,
+      package_name: pkg?.name_ar || 'باقة دقائق',
+      minutes,
+      amount_etb: amount,
+      method_id: 'telebirr',
+      sender_name: studentUser.first_name,
+      sender_phone: studentUser.phone || '0990161372',
+      transaction_ref: txRef,
+      transfer_date: new Date().toISOString().slice(0, 10),
+      idempotency_key: `idem-${Date.now()}`,
+      status: 'pending',
+      created_at: new Date().toISOString().replace('T', ' ').slice(0, 16),
+    };
+    setPayments((prev) => [newPay, ...prev]);
+    logAudit('طلب شحن جديد', 'Payments', `طلب شحن بقيمة ${amount} ETB من الطالب ${studentUser.first_name}`);
   };
 
   // 1. Approve Registration & Assign Group
@@ -149,6 +382,35 @@ export default function App() {
           assigned_group_id: assignedGroupId,
           assigned_group_name: assignedGroup?.name,
           assigned_telegram_link: assignedGroup?.telegram_invite_link,
+        },
+      ];
+    });
+
+    // Ensure student exists in users list with role 'student'
+    setUsers((prev) => {
+      const exists = prev.find((u) => u.id === reg?.user_id || u.telegram_id === reg?.telegram_id);
+      if (exists) {
+        return prev.map((u) =>
+          u.id === reg?.user_id || u.telegram_id === reg?.telegram_id
+            ? { ...u, student_code: finalCode, role: 'student' }
+            : u
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: reg?.user_id || `usr-${Date.now()}`,
+          telegram_id: reg?.telegram_id || 12345678,
+          student_code: finalCode,
+          first_name: reg?.student_name.split(' ')[0] || 'طالب',
+          last_name: reg?.student_name.split(' ').slice(1).join(' ') || '',
+          phone: reg?.phone || '',
+          email: reg?.email,
+          preferred_language: 'ar',
+          role: 'student',
+          is_active: true,
+          is_frozen: false,
+          created_at: new Date().toISOString().slice(0, 10),
         },
       ];
     });
@@ -629,6 +891,12 @@ export default function App() {
   const openTicketsCount = tickets.filter((t) => t.status === 'open').length;
   const teachersList = users.filter((u) => u.role === 'teacher' || u.role === 'super_admin');
 
+  const activeStudentUser = users.find((u) => u.id === activeStudentId) || users.find((u) => u.role === 'student') || users[0];
+  const activeStudentReg = registrations.find((r) => r.user_id === activeStudentUser.id || r.telegram_id === activeStudentUser.telegram_id);
+  const activeStudentGroup = groups.find((g) => g.id === activeStudentReg?.assigned_group_id);
+  const activeStudentBal = balances.find((b) => b.user_id === activeStudentUser.id || b.user_id === String(activeStudentUser.telegram_id))?.current_minutes || 0;
+  const activeStudentLedger = ledger.filter((l) => l.user_id === activeStudentUser.id || l.student_name.includes(activeStudentUser.first_name));
+
   return (
     <div className="min-h-screen bg-stone-100/70 text-stone-900 font-['Cairo',sans-serif] flex flex-col">
       {/* Top Brand Header */}
@@ -636,175 +904,295 @@ export default function App() {
         currentLang={currentLang}
         onLanguageChange={setCurrentLang}
         onOpenSimulator={() => setActiveTab('bot_simulator')}
+        onOpenPwaModal={() => setIsPwaModalOpen(true)}
+        onOpenSupervisorAuth={() => setIsSupervisorAuthModalOpen(true)}
+        currentViewMode={currentViewMode}
+        onToggleViewMode={() => setCurrentViewMode((prev) => (prev === 'supervisor' ? 'student' : 'supervisor'))}
+        supervisorEmail={supervisorEmail}
       />
 
-      {/* Main Body */}
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
-        {/* Sidebar */}
-        <Sidebar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          pendingRegistrationsCount={pendingRegistrationsCount}
-          pendingPaymentsCount={pendingPaymentsCount}
-          openTicketsCount={openTicketsCount}
-        />
+      {/* Mode 1: Student Personal View (ما يظهر للطالب خاص به بستايل محادثة وتطبيق ويب) */}
+      {currentViewMode === 'student' ? (
+        <div className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-4">
+          
+          {/* Quick Bar to switch student or return to supervisor */}
+          <div className="bg-white p-3 rounded-2xl border border-stone-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-stone-700">👤 عرض حساب الطالب:</span>
+              <select
+                value={activeStudentId}
+                onChange={(e) => setActiveStudentId(e.target.value)}
+                className="py-1 px-2.5 bg-stone-100 rounded-lg border border-stone-200 text-stone-900 font-bold focus:outline-none cursor-pointer"
+              >
+                {users.filter(u => u.role === 'student').length === 0 ? (
+                  <option value="">لا يوجد طلاب مسجلون حالياً (في انتظار أول تسجيل)</option>
+                ) : (
+                  users.filter(u => u.role === 'student').map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.first_name} {s.last_name || ''} ({s.student_code || s.telegram_id})
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
 
-        {/* Content View */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          {activeTab === 'overview' && (
-            <DashboardOverview
-              users={users}
-              registrations={registrations}
-              payments={payments}
-              groups={groups}
-              programs={programs}
-              balances={balances}
-              onNavigate={setActiveTab}
-            />
-          )}
+            <button
+              onClick={() => setCurrentViewMode('supervisor')}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-1.5 px-3 rounded-xl transition-colors cursor-pointer"
+            >
+              👑 العودة للوحة المشرف العام
+            </button>
+          </div>
 
-          {activeTab === 'registrations' && (
-            <RegistrationsManager
-              registrations={registrations}
-              groups={groups}
-              programs={programs}
-              onApprove={handleApproveRegistration}
-              onReject={handleRejectRegistration}
-            />
-          )}
-
-          {activeTab === 'payments' && (
-            <PaymentsManager
-              payments={payments}
-              onApprovePayment={handleApprovePayment}
-              onRejectPayment={handleRejectPayment}
-            />
-          )}
-
-          {activeTab === 'balances' && (
-            <BalancesLedger
-              balances={balances}
-              ledger={ledger}
-              onAdjustBalance={handleAdjustBalance}
-            />
-          )}
-
-          {activeTab === 'groups' && (
-            <GroupsManager
-              groups={groups}
-              teachers={teachersList}
-              programs={programs}
-              balances={balances}
-              onCreateGroup={handleCreateGroup}
-              onUpdateTelegramLink={handleUpdateTelegramLink}
-              onToggleGroupStatus={handleToggleGroupStatus}
-              onRestrictStudent={handleRestrictStudent}
-              onUnrestrictStudent={handleUnrestrictStudent}
-              onBorrowMinutes={handleBorrowMinutes}
-              onSendLowBalanceWarning={handleSendLowBalanceWarning}
-              onTriggerLessonReminder={handleTriggerLessonReminder}
-            />
-          )}
-
-          {activeTab === 'programs' && (
-            <ProgramsManager
-              programs={programs}
-              onToggleProgramStatus={(id) =>
-                setPrograms((prev) =>
-                  prev.map((p) => (p.id === id ? { ...p, is_active: !p.is_active } : p))
-                )
-              }
-              onUpdateProgram={(updated) =>
-                setPrograms((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
-              }
-              onCreateProgram={(created) => setPrograms((prev) => [...prev, created])}
-            />
-          )}
-
-          {activeTab === 'packages' && (
-            <PackagesManager
+          {users.filter(u => u.role === 'student').length === 0 ? (
+            <div className="bg-white rounded-3xl border border-stone-200 p-10 text-center space-y-4 shadow-sm">
+              <div className="w-16 h-16 mx-auto bg-emerald-50 text-emerald-700 rounded-2xl flex items-center justify-center text-3xl">
+                📖
+              </div>
+              <h3 className="text-xl font-bold text-stone-900 font-['Amiri',serif]">
+                النظام مهيأ وجاهز لاستقبال الطلاب الحقيقيين
+              </h3>
+              <p className="text-stone-500 text-sm max-w-lg mx-auto leading-relaxed">
+                تم تنظيف كافة الحسابات التجريبية بنجاح وتهيئة النظام الحقيقي. بمجرد قيام الطالب بتعبئة استمارة التسجيل الحقيقية وتحديد جنسه وفترته واعتماده، سيظهر حسابه ومجموعته ورصيده هنا فوراً.
+              </p>
+              <div className="pt-2 flex flex-wrap justify-center gap-3">
+                <button
+                  onClick={() => {
+                    setCurrentViewMode('supervisor');
+                    setActiveTab('registrations');
+                  }}
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-6 py-2.5 rounded-xl cursor-pointer text-sm shadow-xs transition-colors"
+                >
+                  استعراض نموذج واستمارات التسجيل 📝
+                </button>
+                <button
+                  onClick={() => setCurrentViewMode('supervisor')}
+                  className="bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold px-5 py-2.5 rounded-xl cursor-pointer text-sm transition-colors"
+                >
+                  لوحة المشرف العام 👑
+                </button>
+              </div>
+            </div>
+          ) : (
+            <StudentPortal
+              studentName={`${activeStudentUser.first_name} ${activeStudentUser.last_name || ''}`}
+              studentCode={activeStudentUser.student_code || activeStudentReg?.student_code || (activeStudentReg?.gender === 'female' ? 'IF-1001' : 'IM-1001')}
+              studentGender={activeStudentReg?.gender || (activeStudentUser.student_code?.startsWith('IF') ? 'female' : 'male')}
+              studentShift={activeStudentReg?.shift || 'morning'}
+              currentBalance={activeStudentBal}
+              assignedGroup={activeStudentGroup}
+              ledgerHistory={activeStudentLedger}
               packages={packages}
-              onUpdatePackagePrice={handleUpdatePackagePrice}
-              onTogglePackageStatus={(id) =>
-                setPackages((prev) =>
-                  prev.map((p) => (p.id === id ? { ...p, is_active: !p.is_active } : p))
-                )
-              }
+              paymentMethods={paymentMethods}
+              onRequestEmergencyLoan={handleStudentRequestLoan}
+              onSubmitPayment={handleStudentSubmitPayment}
             />
           )}
+        </div>
+      ) : (
+        /* Mode 2: Supervisor View (ما يظهر للمشرف من القوائم الخاصة) */
+        <div className="flex-1 flex max-w-7xl w-full mx-auto">
+          {/* Sidebar */}
+          <Sidebar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            pendingRegistrationsCount={pendingRegistrationsCount}
+            pendingPaymentsCount={pendingPaymentsCount}
+            openTicketsCount={openTicketsCount}
+          />
 
-          {activeTab === 'payment_methods' && (
-            <PaymentMethodsManager
-              methods={paymentMethods}
-              onUpdateMethod={handleUpdatePaymentMethod}
-            />
-          )}
+          {/* Content View */}
+          <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+            {activeTab === 'overview' && (
+              <DashboardOverview
+                users={users}
+                registrations={registrations}
+                payments={payments}
+                groups={groups}
+                programs={programs}
+                balances={balances}
+                onNavigate={setActiveTab}
+              />
+            )}
 
-          {activeTab === 'users' && (
-            <UsersManager
-              users={users}
-              onToggleFreeze={handleToggleFreezeUser}
-            />
-          )}
+            {/* Students Directory with interactive buttons and 5 actions */}
+            {activeTab === 'students_directory' && (
+              <SupervisorStudentsManager
+                users={users}
+                registrations={registrations}
+                balances={balances}
+                groups={groups}
+                onDeductMinutes={handleDeductMinutes}
+                onRewardMinutes={handleRewardMinutes}
+                onFreezeStudent={handleFreezeStudent}
+                onBanStudent={handleBanStudent}
+                onActivateStudent={handleActivateStudent}
+              />
+            )}
 
-          {activeTab === 'supervisors' && (
-            <SupervisorsManager users={users} />
-          )}
+            {activeTab === 'registrations' && (
+              <RegistrationsManager
+                registrations={registrations}
+                groups={groups}
+                programs={programs}
+                onApprove={handleApproveRegistration}
+                onReject={handleRejectRegistration}
+              />
+            )}
 
-          {activeTab === 'notifications' && (
-            <NotificationsManager
-              notifications={notifications}
-              onAddNotification={handleAddNotification}
-              onUpdateNotification={handleUpdateNotification}
-              onDeleteNotification={handleDeleteNotification}
-              onTriggerNotification={handleTriggerNotification}
-              onToggleStatus={handleToggleNotificationStatus}
-              dispatchLogs={dispatchLogs}
-              groups={groups}
-              programs={programs}
-              balances={balances}
-              users={users}
-              contactPhone={contactPhone}
-            />
-          )}
+            {activeTab === 'payments' && (
+              <PaymentsManager
+                payments={payments}
+                onApprovePayment={handleApprovePayment}
+                onRejectPayment={handleRejectPayment}
+              />
+            )}
 
-          {activeTab === 'announcements' && (
-            <AnnouncementsManager
-              programs={programs}
-              totalStudentsCount={users.length}
-            />
-          )}
+            {activeTab === 'balances' && (
+              <BalancesLedger
+                balances={balances}
+                ledger={ledger}
+                onAdjustBalance={handleAdjustBalance}
+              />
+            )}
 
-          {activeTab === 'support' && (
-            <SupportManager
-              tickets={tickets}
-              onReplyTicket={handleReplyTicket}
-              onResolveTicket={handleResolveTicket}
-            />
-          )}
+            {activeTab === 'groups' && (
+              <GroupsManager
+                groups={groups}
+                teachers={teachersList}
+                programs={programs}
+                balances={balances}
+                onCreateGroup={handleCreateGroup}
+                onUpdateTelegramLink={handleUpdateTelegramLink}
+                onToggleGroupStatus={handleToggleGroupStatus}
+                onRestrictStudent={handleRestrictStudent}
+                onUnrestrictStudent={handleUnrestrictStudent}
+                onBorrowMinutes={handleBorrowMinutes}
+                onSendLowBalanceWarning={handleSendLowBalanceWarning}
+                onTriggerLessonReminder={handleTriggerLessonReminder}
+              />
+            )}
 
-          {activeTab === 'audit' && (
-            <AuditLogView logs={auditLogs} />
-          )}
+            {activeTab === 'programs' && (
+              <ProgramsManager
+                programs={programs}
+                onToggleProgramStatus={(id) =>
+                  setPrograms((prev) =>
+                    prev.map((p) => (p.id === id ? { ...p, is_active: !p.is_active } : p))
+                  )
+                }
+                onUpdateProgram={(updated) =>
+                  setPrograms((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+                }
+                onCreateProgram={(created) => setPrograms((prev) => [...prev, created])}
+              />
+            )}
 
-          {activeTab === 'settings' && (
-            <SettingsManager
-              contactPhone={contactPhone}
-              contactEmail={contactEmail}
-              superAdminEmail={superAdminEmail}
-              onUpdateContacts={(p, e) => {
-                setContactPhone(p);
-                setContactEmail(e);
-                logAudit('تحديث بيانات التواصل الرسمية', 'Settings', `هاتف: ${p} | بريد: ${e}`);
-              }}
-            />
-          )}
+            {activeTab === 'packages' && (
+              <PackagesManager
+                packages={packages}
+                onUpdatePackagePrice={handleUpdatePackagePrice}
+                onTogglePackageStatus={(id) =>
+                  setPackages((prev) =>
+                    prev.map((p) => (p.id === id ? { ...p, is_active: !p.is_active } : p))
+                  )
+                }
+              />
+            )}
 
-          {activeTab === 'bot_simulator' && (
-            <TelegramBotSimulator />
-          )}
-        </main>
-      </div>
+            {activeTab === 'payment_methods' && (
+              <PaymentMethodsManager
+                methods={paymentMethods}
+                onUpdateMethod={handleUpdatePaymentMethod}
+              />
+            )}
+
+            {activeTab === 'users' && (
+              <UsersManager
+                users={users}
+                onToggleFreeze={handleToggleFreezeUser}
+              />
+            )}
+
+            {activeTab === 'supervisors' && (
+              <SupervisorsManager users={users} />
+            )}
+
+            {activeTab === 'notifications' && (
+              <NotificationsManager
+                notifications={notifications}
+                onAddNotification={handleAddNotification}
+                onUpdateNotification={handleUpdateNotification}
+                onDeleteNotification={handleDeleteNotification}
+                onTriggerNotification={handleTriggerNotification}
+                onToggleStatus={handleToggleNotificationStatus}
+                dispatchLogs={dispatchLogs}
+                groups={groups}
+                programs={programs}
+                balances={balances}
+                users={users}
+                contactPhone={contactPhone}
+              />
+            )}
+
+            {activeTab === 'announcements' && (
+              <AnnouncementsManager
+                programs={programs}
+                totalStudentsCount={users.length}
+              />
+            )}
+
+            {activeTab === 'support' && (
+              <SupportManager
+                tickets={tickets}
+                onReplyTicket={handleReplyTicket}
+                onResolveTicket={handleResolveTicket}
+              />
+            )}
+
+            {activeTab === 'audit' && (
+              <AuditLogView logs={auditLogs} />
+            )}
+
+            {activeTab === 'settings' && (
+              <SettingsManager
+                contactPhone={contactPhone}
+                contactEmail={contactEmail}
+                superAdminEmail={supervisorEmail}
+                onUpdateContacts={(p, e) => {
+                  setContactPhone(p);
+                  setContactEmail(e);
+                  logAudit('تحديث بيانات التواصل الرسمية', 'Settings', `هاتف: ${p} | بريد: ${e}`);
+                }}
+              />
+            )}
+
+            {activeTab === 'bot_simulator' && (
+              <TelegramBotSimulator />
+            )}
+          </main>
+        </div>
+      )}
+
+      {/* PWA Download Box Modal */}
+      <PwaInstallModal
+        isOpen={isPwaModalOpen}
+        onClose={() => setIsPwaModalOpen(false)}
+      />
+
+      {/* Supervisor Auth & Password & Roles Modal */}
+      <SupervisorAuthModal
+        isOpen={isSupervisorAuthModalOpen}
+        onClose={() => setIsSupervisorAuthModalOpen(false)}
+        isLoggedIn={isSupervisorLoggedIn}
+        supervisorEmail={supervisorEmail}
+        supervisorPassword={supervisorPassword}
+        users={users}
+        onLogin={handleSupervisorLogin}
+        onLogout={handleSupervisorLogout}
+        onChangePassword={handleSupervisorChangePassword}
+        onAssignRole={handleAssignRole}
+      />
     </div>
   );
 }

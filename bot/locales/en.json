@@ -98,7 +98,10 @@
   "admin_payment_already_processed": "⚠️ Transaction was already processed.",
 
   "error_generic": "An unexpected error occurred. Please try again or contact support.",
-  "operation_cancelled": "Operation cancelled. Returned to main menu."
-,
-"low_balance_alert": "⚠️ Alert: Your balance is only {balance} minutes.\nPlease recharge to avoid being muted in the group."
+  "operation_cancelled": "Operation cancelled. Returned to main menu.",
+  "low_balance_alert": "⚠️ Alert: Your balance is only {balance} minutes.\nPlease recharge to avoid being muted in the group.",
+  "loan_btn": "🆘 Request Emergency Loan (15 mins)",
+  "loan_granted": "✅ Emergency loan granted (+15 minutes).",
+  "loan_already_active": "⚠️ You already have an active loan. Please recharge first."
 }
+

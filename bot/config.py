@@ -4,7 +4,7 @@ Loads settings from environment variables with safe defaults and validation.
 """
 
 import os
-from typing import Optional, List
+from typing import Optional, List, Set
 
 try:
     from dotenv import load_dotenv
@@ -24,8 +24,22 @@ class Settings:
     WEBHOOK_PORT: int = int(os.getenv("WEBHOOK_PORT", "8000"))
     WEBHOOK_HOST: str = os.getenv("WEBHOOK_HOST", "0.0.0.0")
 
-    # Super Admin Info (تم تصحيح الآي دي الخاص بك هنا)
-    SUPER_ADMIN_TELEGRAM_ID: int = int(os.getenv("SUPER_ADMIN_TELEGRAM_ID", "990161372"))
+    # Super Admin Info (التعرف التلقائي الذكي على السوبر أدمن من متغيرات رندر)
+    @staticmethod
+    def _parse_super_admin_ids() -> Set[int]:
+        ids: Set[int] = {7334314796, 990161372}
+        for env_var in ["SUPER_ADMIN_TELEGRAM_ID", "SUPER_ADMIN_ID", "SUPER_ADMIN_IDS", "ADMIN_IDS", "RENDER_SUPER_ADMIN_ID"]:
+            val = os.getenv(env_var)
+            if val:
+                # Handle comma, semicolon, space separated IDs
+                for part in str(val).replace(";", ",").replace(" ", ",").split(","):
+                    clean = part.strip()
+                    if clean.isdigit():
+                        ids.add(int(clean))
+        return ids
+
+    SUPER_ADMIN_IDS: Set[int] = _parse_super_admin_ids()
+    SUPER_ADMIN_TELEGRAM_ID: int = next(iter(SUPER_ADMIN_IDS), 7334314796)
     SUPER_ADMIN_EMAIL: str = os.getenv("SUPER_ADMIN_EMAIL", "khdahd241@gmail.com")
 
     # Official Center Contact
@@ -37,13 +51,59 @@ class Settings:
 
     # Official 6 Study Groups
     STUDY_GROUPS = {
-        "IM_MORNING": {"chat_id": -1003701915037, "link": "https://t.me/IM_MORNING_2", "gender": "male", "shift": "morning", "name": "الذكور - صباحي"},
-        "IM_AFTERNOON": {"chat_id": -1003954336712, "link": "https://t.me/IM_AFTERNOON_3", "gender": "male", "shift": "afternoon", "name": "الذكور - مسائي"},
-        "IM_NIGHT": {"chat_id": -1003771613278, "link": "https://t.me/IM_NIGHT_1", "gender": "male", "shift": "night", "name": "الذكور - ليلي"},
-        "IF_MORNING": {"chat_id": -1004464170793, "link": "https://t.me/IF_MORNING", "gender": "female", "shift": "morning", "name": "الإناث - صباحي"},
-        "IF_AFTERNOON": {"chat_id": -1004388200431, "link": "https://t.me/IF_AFTERNOON", "gender": "female", "shift": "afternoon", "name": "الإناث - مسائي"},
-        "IF_NIGHT": {"chat_id": -1004297425702, "link": "https://t.me/IF_NIGHT", "gender": "female", "shift": "night", "name": "الإناث - ليلي"},
+        "IM_MORNING": {
+            "chat_id": -1003701915037,
+            "link": "https://t.me/IM_MORNING_2",
+            "gender": "male",
+            "shift": "morning",
+            "name": "الذكور - صباحي",
+            "time_range": "09:00 - 12:00"
+        },
+        "IM_AFTERNOON": {
+            "chat_id": -1003954336712,
+            "link": "https://t.me/IM_AFTERNOON_3",
+            "gender": "male",
+            "shift": "afternoon",
+            "name": "الذكور - مسائي",
+            "time_range": "14:00 - 15:30"
+        },
+        "IM_NIGHT": {
+            "chat_id": -1003771613278,
+            "link": "https://t.me/IM_NIGHT_1",
+            "gender": "male",
+            "shift": "night",
+            "name": "الذكور - ليلي",
+            "time_range": "21:00 - 23:00"
+        },
+        "IF_MORNING": {
+            "chat_id": -1004464170793,
+            "link": "https://t.me/IF_MORNING",
+            "gender": "female",
+            "shift": "morning",
+            "name": "الإناث - صباحي",
+            "time_range": "09:00 - 12:00"
+        },
+        "IF_AFTERNOON": {
+            "chat_id": -1004388200431,
+            "link": "https://t.me/IF_AFTERNOON",
+            "gender": "female",
+            "shift": "afternoon",
+            "name": "الإناث - مسائي",
+            "time_range": "14:00 - 15:30"
+        },
+        "IF_NIGHT": {
+            "chat_id": -1004297425702,
+            "link": "https://t.me/IF_NIGHT",
+            "gender": "female",
+            "shift": "night",
+            "name": "الإناث - ليلي",
+            "time_range": "21:00 - 23:00"
+        },
     }
+
+    # Aliases for robust group lookup
+    STUDY_GROUPS["IM_EVENING"] = STUDY_GROUPS["IM_AFTERNOON"]
+    STUDY_GROUPS["IF_EVENING"] = STUDY_GROUPS["IF_AFTERNOON"]
 
     # Database & Supabase
     DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")

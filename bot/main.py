@@ -55,26 +55,19 @@ def build_dispatcher() -> Dispatcher:
 def create_bot() -> Bot:
     return Bot(token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
 
-# === مهمة التنبيهات في الخلفية ===
+# === مهمة التنبيهات في الخلفية ومتابعة الرصيد والحلقات ===
 async def send_low_balance_alerts(bot: Bot):
+    from bot.services.notification_service import notification_service
     while True:
         try:
-            res = supabase.table('users').select('telegram_id').execute()
-            for user in res.data:
-                uid = user['telegram_id']
-                bal = ledger_service.get_balance(uid)['current_minutes']
-                
-                if bal <= 15:
-                    lang = user_service.get_user_language(uid)
-                    kb = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text=t("loan_btn", lang), callback_data="req_loan")],
-                    ])
-                    try:
-                        await bot.send_message(uid, t("low_balance_alert", lang, balance=bal), reply_markup=kb)
-                    except: pass
+            logger.info("Executing periodic low-balance and group status audit...")
+            results = await notification_service.check_and_notify_low_balance_students(bot)
+            logger.info(f"Periodic check complete: {results}")
         except Exception as e:
-            logger.error(f"Error in alert task: {e}")
-        await asyncio.sleep(8 * 60 * 60) # كل 8 ساعات
+            logger.error(f"Error in alert/sync task: {e}")
+
+        await asyncio.sleep(2 * 60 * 60) # فحص دوري كل ساعتين
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -131,6 +124,7 @@ async def main():
     logger.info("Starting Bot in Polling Mode...")
     bot = create_bot()
     dp = build_dispatcher()
+    asyncio.create_task(send_low_balance_alerts(bot))
     try:
         await dp.start_polling(bot, drop_pending_updates=True)
     finally:

@@ -63,6 +63,86 @@ export const TelegramBotSimulator: React.FC = () => {
     phone?: string;
   }>({});
 
+  // Admin student directory with active inline action buttons
+  const [studentsList, setStudentsList] = useState<Array<{
+    code: string;
+    name: string;
+    telegramId: string;
+    gender: 'male' | 'female';
+    shift: string;
+    shiftName: string;
+    groupName: string;
+    balance: number;
+    status: 'active' | 'muted' | 'banned';
+    isRestricted: boolean;
+  }>>([
+    {
+      code: 'IM-1001',
+      name: 'بلال حسين الأثيوبي',
+      telegramId: '776655443',
+      gender: 'male',
+      shift: 'morning',
+      shiftName: 'صباحية (09:00 ص - 12:00 م)',
+      groupName: 'حلقة الذكور - الفترة الصباحية (IM Morning)',
+      balance: 240,
+      status: 'active',
+      isRestricted: false,
+    },
+    {
+      code: 'IF-1001',
+      name: 'زينب عبد الله',
+      telegramId: '665544332',
+      gender: 'female',
+      shift: 'morning',
+      shiftName: 'صباحية (09:00 ص - 12:00 م)',
+      groupName: 'حلقة الإناث - الفترة الصباحية (IF Morning)',
+      balance: 180,
+      status: 'active',
+      isRestricted: false,
+    },
+    {
+      code: 'IM-1002',
+      name: 'أحمد صالح',
+      telegramId: '887766554',
+      gender: 'male',
+      shift: 'afternoon',
+      shiftName: 'مسائية (02:00 م - 03:30 م)',
+      groupName: 'حلقة الذكور - الفترة المسائية (IM Afternoon)',
+      balance: 350,
+      status: 'active',
+      isRestricted: false,
+    },
+    {
+      code: 'IF-1002',
+      name: 'فاطمة الزهراء علي',
+      telegramId: '334455667',
+      gender: 'female',
+      shift: 'night',
+      shiftName: 'ليلية (09:00 م - 11:00 م)',
+      groupName: 'حلقة الإناث - الفترة الليلية (IF Night)',
+      balance: 50,
+      status: 'active',
+      isRestricted: false,
+    },
+    {
+      code: 'IM-1003',
+      name: 'عمر بن عبد العزيز',
+      telegramId: '556677889',
+      gender: 'male',
+      shift: 'night',
+      shiftName: 'ليلية (09:00 م - 11:00 م)',
+      groupName: 'حلقة الذكور - الفترة الليلية (IM Night)',
+      balance: 0,
+      status: 'muted',
+      isRestricted: true,
+    },
+  ]);
+
+  const [adminActionState, setAdminActionState] = useState<{
+    type: 'deduct' | 'dm' | null;
+    targetStudentCode: string | null;
+  }>({ type: null, targetStudentCode: null });
+
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -348,10 +428,11 @@ export const TelegramBotSimulator: React.FC = () => {
       addBotMessage(
         `🛡 *لوحة الإدارة المركزية لمقرأة الإمام الجزري*\n\nمرحباً بك يا فضيلة الشيخ خالد أحمد (المدير العام).\nالمعرف: \`7334314796\`\nصلاحياتك: غير مقيدة (Super Admin).\n\nالمجموعات الخاضعة للإشراف: 6 مجموعات دراسية + 3 ملتقيات عامة.\nاختر الإجراء المطلوب:`,
         [
-          { label: '👥 المجموعات والتقييد الآلي', action: () => addBotMessage('المجموعات الست نشطة. الطلاب ذوو رصيد 0 دقيقة يتم تقييدهم آلياً مع خيار فك التقييد أو الاستلاف.') },
+          { label: '👥 إدارة الطلاب والأرصدة (بالأزرار الفعالة)', action: () => handleShowAdminStudentsList() },
           { label: '🔔 بث تذكير الصباح (09:00)', action: () => simulateMorningLessonReminder() },
           { label: '🔔 بث تذكير المساء (14:00)', action: () => simulateAfternoonLessonReminder() },
           { label: '🔔 بث تذكير الليل (21:00)', action: () => simulateNightLessonReminder() },
+          { label: '🛡 فحص المجموعات والتقييد الآلي', action: () => addBotMessage('المجموعات الست نشطة. الطلاب ذوو رصيد 0 دقيقة يتم كتمهم آلياً مع خيار فك التقييد أو الاستلاف.') },
           { label: '⬅️ القائمة الرئيسية', action: () => addBotMessage('الرئيسية:', getMainButtons()) },
         ]
       );
@@ -360,6 +441,240 @@ export const TelegramBotSimulator: React.FC = () => {
 
     // Default response
     addBotMessage(`لم أفهم الأمر المطلوب. يرجى الاختيار من القائمة:`, getMainButtons());
+  };
+
+  const handleShowAdminStudentsList = () => {
+    setAdminActionState({ type: null, targetStudentCode: null });
+    const studentButtons = studentsList.map((std) => ({
+      label: `${std.status === 'active' && !std.isRestricted ? '🟢' : std.status === 'muted' || std.isRestricted ? '🔇' : '⛔️'} ${std.name} (${std.code}) - ${std.balance}د`,
+      action: () => handleShowAdminStudentDetail(std.code),
+    }));
+
+    addBotMessage(
+      `👥 *إدارة الطلاب والأرصدة بالبوت (أزرار تفاعلية مباشرة)*\n\nاختر الطالب المطلوب من الأزرار أدناه لعرض بطاقته، خصم دقائق الجلسة، مراسلته بالخاص، أو تعديل صلاحيات مجموعته:`,
+      [
+        ...studentButtons,
+        { label: '🛡 العودة للوحة الإدارة', action: () => handleCommand('/admin') },
+        { label: '⬅️ القائمة الرئيسية', action: () => addBotMessage('الرئيسية:', getMainButtons()) },
+      ]
+    );
+  };
+
+  const handleShowAdminStudentDetail = (code: string) => {
+    setAdminActionState({ type: null, targetStudentCode: null });
+    const std = studentsList.find((s) => s.code === code);
+    if (!std) {
+      addBotMessage('⚠️ الطالب غير موجود.', [{ label: '👥 قائمة الطلاب', action: handleShowAdminStudentsList }]);
+      return;
+    }
+
+    const statusDesc =
+      std.status === 'active' && !std.isRestricted
+        ? '🟢 نشط ومصرح بالمشاركة في الحلقة الصوتية'
+        : std.status === 'muted' || std.isRestricted
+        ? '🔇 مكتوم في المجموعة (ممنوع من الصوت والكتابة)'
+        : '⛔️ محظور كلياً من المجموعات';
+
+    addBotMessage(
+      `👤 *بطاقة الطالب الإدارية بالمقرأة*\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `🏷️ *كود الطالب:* \`${std.code}\`\n` +
+      `👤 *الاسم الكامل:* *${std.name}*\n` +
+      `🆔 *معرف التيليجرام:* \`${std.telegramId}\`\n` +
+      `🚻 *الجنس:* ${std.gender === 'male' ? 'ذكر (IM)' : 'أنثى (IF)'}\n` +
+      `🕒 *الفترة الدراسية:* ${std.shiftName}\n` +
+      `👥 *المجموعة المخصصة:* ${std.groupName}\n` +
+      `⏱ *الرصيد المتاح حالياً:* *${std.balance} دقيقة*\n` +
+      `📊 *الحالة الإدارية:* ${statusDesc}\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `⚡ *اختر الإجراء المطلوب لتنفيذه فوراً:*`,
+      [
+        { label: '💳 خصم للجلسة', action: () => handleDeductSessionPrompt(std.code) },
+        { label: '💬 رسالة خاص', action: () => handleDmStudentPrompt(std.code) },
+        { label: '✅ تفعيل الحساب', action: () => handleActivateStudent(std.code) },
+        { label: '🔇 كتم حساب', action: () => handleMuteStudent(std.code) },
+        { label: '⛔️ حظر كلي', action: () => handleBanStudent(std.code) },
+        { label: '🗑 حذف', action: () => handleDeleteStudentPrompt(std.code) },
+        { label: '👥 العودة لقائمة الطلاب', action: handleShowAdminStudentsList },
+        { label: '🛡 لوحة الإدارة', action: () => handleCommand('/admin') },
+      ]
+    );
+  };
+
+  const handleDeductSessionPrompt = (code: string) => {
+    const std = studentsList.find((s) => s.code === code);
+    if (!std) return;
+
+    setAdminActionState({ type: 'deduct', targetStudentCode: code });
+
+    addBotMessage(
+      `⏱ *خصم دقائق جلسة قرآنية*\n\n` +
+      `👤 الطالب: *${std.name}* (كود: \`${code}\`)\n` +
+      `🟢 الرصيد المتاح: *${std.balance} دقيقة*\n\n` +
+      `✍️ *اكتب الآن عدد الدقائق المراد خصمها للجلسة في خانة الرسائل بالأسفل (أو اختر من المدد السريعة أدناه):*`,
+      [
+        { label: '⚡ خصم 15 دقيقة', action: () => handleExecuteDeductSession(code, 15) },
+        { label: '⚡ خصم 30 دقيقة', action: () => handleExecuteDeductSession(code, 30) },
+        { label: '⚡ خصم 45 دقيقة', action: () => handleExecuteDeductSession(code, 45) },
+        { label: '⚡ خصم 60 دقيقة', action: () => handleExecuteDeductSession(code, 60) },
+        { label: '❌ إلغاء والعودة للبطاقة', action: () => handleShowAdminStudentDetail(code) },
+      ]
+    );
+  };
+
+  const handleExecuteDeductSession = (code: string, minutes: number) => {
+    setAdminActionState({ type: null, targetStudentCode: null });
+    const std = studentsList.find((s) => s.code === code);
+    if (!std) return;
+
+    const oldBalance = std.balance;
+    const newBalance = Math.max(0, oldBalance - minutes);
+    const becameRestricted = newBalance === 0;
+
+    setStudentsList((prev) =>
+      prev.map((s) =>
+        s.code === code
+          ? {
+              ...s,
+              balance: newBalance,
+              status: becameRestricted ? 'muted' : s.status,
+              isRestricted: becameRestricted ? true : s.isRestricted,
+            }
+          : s
+      )
+    );
+
+    if (code === studentCode) {
+      setBalance(newBalance);
+      if (becameRestricted) setIsRestricted(true);
+    }
+
+    const restrictionNote = becameRestricted
+      ? `\n\n⚠️ *تنبيه آلي:* نفد رصيد الطالب (0 دقيقة)، وقام البوت بكتمه وتقييده في مجموعة التيليجرام (${std.groupName}) لمنع المشاركة الصوتية لحين الشحن أو الاستلاف.`
+      : '';
+
+    addBotMessage(
+      `✅ *تم خصم ${minutes} دقيقة بنجاح من حساب الطالب للجلسة القرءانية!*\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `👤 الطالب: *${std.name}* (\`${code}\`)\n` +
+      `📉 الرصيد السابق: ${oldBalance} دقيقة\n` +
+      `🟢 الرصيد المتبقي: *${newBalance} دقيقة*\n` +
+      `🧾 رقم القيد المالي: \`REC-SES-${Date.now().toString().slice(-6)}\`\n` +
+      `تم توثيق الخصم في الدفتر المالي وإشعار الطالب.${restrictionNote}`,
+      [
+        { label: '👤 عرض بطاقة الطالب المحدثة', action: () => handleShowAdminStudentDetail(code) },
+        { label: '👥 العودة لقائمة الطلاب', action: handleShowAdminStudentsList },
+        { label: '🛡 لوحة الإدارة', action: () => handleCommand('/admin') },
+      ]
+    );
+  };
+
+  const handleDmStudentPrompt = (code: string) => {
+    const std = studentsList.find((s) => s.code === code);
+    if (!std) return;
+
+    setAdminActionState({ type: 'dm', targetStudentCode: code });
+
+    addBotMessage(
+      `💬 *إرسال رسالة خاصة للطالب عبر البوت*\n\n` +
+      `👤 إلى الطالب: *${std.name}* (\`${code}\`)\n` +
+      `🆔 معرف التيليجرام: \`${std.telegramId}\`\n\n` +
+      `✍️ *اكتب الآن نص الرسالة في خانة الرسائل بالأسفل لإرسالها فوراً في الخاص:*`,
+      [
+        { label: '❌ إلغاء', action: () => handleShowAdminStudentDetail(code) },
+      ]
+    );
+  };
+
+  const handleExecuteDmStudent = (code: string, text: string) => {
+    setAdminActionState({ type: null, targetStudentCode: null });
+    const std = studentsList.find((s) => s.code === code);
+    if (!std) return;
+
+    addBotMessage(
+      `✅ *تم إرسال الرسالة الخاصة إلى الطالب بنجاح!*\n\n` +
+      `👤 المستلم: *${std.name}* (\`${code}\`)\n` +
+      `💬 النص المرسل:\n"${text}"\n\n` +
+      `وصلت الرسالة إلى المحادثة الفردية للطالب مع البوت.`,
+      [
+        { label: '👤 عودة لبطاقة الطالب', action: () => handleShowAdminStudentDetail(code) },
+        { label: '👥 قائمة الطلاب', action: handleShowAdminStudentsList },
+      ]
+    );
+  };
+
+  const handleActivateStudent = (code: string) => {
+    setStudentsList((prev) =>
+      prev.map((s) => (s.code === code ? { ...s, status: 'active', isRestricted: false } : s))
+    );
+    if (code === studentCode) {
+      setIsRestricted(false);
+    }
+    addBotMessage(
+      `✅ *تم تفعيل حساب الطالب (${code}) بنجاح!*\n\nتم رفع أي كتم أو حظر في مجموعة التيليجرام، وتأكيد صلاحيات الكتابة والمشاركة في البث الصوتي.`,
+      [
+        { label: '👤 عرض بطاقة الطالب', action: () => handleShowAdminStudentDetail(code) },
+        { label: '👥 قائمة الطلاب', action: handleShowAdminStudentsList },
+      ]
+    );
+  };
+
+  const handleMuteStudent = (code: string) => {
+    setStudentsList((prev) =>
+      prev.map((s) => (s.code === code ? { ...s, status: 'muted', isRestricted: true } : s))
+    );
+    if (code === studentCode) {
+      setIsRestricted(true);
+    }
+    addBotMessage(
+      `🔇 *تم كتم حساب الطالب (${code}) بنجاح!*\n\nقام البوت بتطبيق تقييد المجموعة ومنعه من إرسال الرسائل والمشاركة في البث الصوتي بقرار إداري.`,
+      [
+        { label: '👤 عرض بطاقة الطالب', action: () => handleShowAdminStudentDetail(code) },
+        { label: '👥 قائمة الطلاب', action: handleShowAdminStudentsList },
+      ]
+    );
+  };
+
+  const handleBanStudent = (code: string) => {
+    setStudentsList((prev) =>
+      prev.map((s) => (s.code === code ? { ...s, status: 'banned', isRestricted: true } : s))
+    );
+    if (code === studentCode) {
+      setIsRestricted(true);
+    }
+    addBotMessage(
+      `⛔️ *تم تطبيق الحظر الكلي على الطالب (${code})!*\n\nتم استبعاد الطالب من المجموعة التعليمية ومنعه من الدخول.`,
+      [
+        { label: '👤 عرض بطاقة الطالب', action: () => handleShowAdminStudentDetail(code) },
+        { label: '👥 قائمة الطلاب', action: handleShowAdminStudentsList },
+      ]
+    );
+  };
+
+  const handleDeleteStudentPrompt = (code: string) => {
+    const std = studentsList.find((s) => s.code === code);
+    if (!std) return;
+
+    addBotMessage(
+      `⚠️ *تأكيد حذف الطالب نهائياً*\n\n` +
+      `هل أنت متأكد من رغبتك في حذف الطالب *${std.name}* (\`${code}\`) وسجلاته نهائياً من المقرأة؟\n` +
+      `لا يمكن التراجع عن هذا الإجراء بعد تنفيذه.`,
+      [
+        { label: '🗑 نعم، احذف نهائياً', action: () => handleExecuteDeleteStudent(code) },
+        { label: '❌ إلغاء والعودة للبطاقة', action: () => handleShowAdminStudentDetail(code) },
+      ]
+    );
+  };
+
+  const handleExecuteDeleteStudent = (code: string) => {
+    setStudentsList((prev) => prev.filter((s) => s.code !== code));
+    addBotMessage(
+      `🗑 *تم حذف الطالب (\`${code}\`) نهائياً من سجلات المقرأة.*`,
+      [
+        { label: '👥 العودة لقائمة الطلاب', action: handleShowAdminStudentsList },
+        { label: '🛡 لوحة الإدارة', action: () => handleCommand('/admin') },
+      ]
+    );
   };
 
   const handleProgramDetail = (type: string) => {
@@ -577,6 +892,30 @@ export const TelegramBotSimulator: React.FC = () => {
       return;
     }
 
+    // Handle Admin Deduct Session Minutes Input
+    if (adminActionState.type === 'deduct' && adminActionState.targetStudentCode) {
+      addUserMessage(text);
+      const mins = parseInt(text, 10);
+      if (isNaN(mins) || mins <= 0) {
+        addBotMessage(
+          `❌ يرجى إدخال رقم صحيح وموجب لعدد الدقائق (مثال: 30 أو 45).`,
+          [
+            { label: '🔙 العودة لبطاقة الطالب', action: () => handleShowAdminStudentDetail(adminActionState.targetStudentCode!) },
+          ]
+        );
+        return;
+      }
+      handleExecuteDeductSession(adminActionState.targetStudentCode, mins);
+      return;
+    }
+
+    // Handle Admin DM Text Input
+    if (adminActionState.type === 'dm' && adminActionState.targetStudentCode) {
+      addUserMessage(text);
+      handleExecuteDmStudent(adminActionState.targetStudentCode, text);
+      return;
+    }
+
     if (text.startsWith('/')) {
       handleCommand(text);
     } else {
@@ -594,11 +933,19 @@ export const TelegramBotSimulator: React.FC = () => {
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-emerald-600" />
             <span className="font-bold text-stone-900">
-              محاكي بوت تيليجرام النشط (المجموعات الست، التنبيهات الإيمانية، والتقييد الآلي)
+              محاكي بوت تيليجرام النشط (المجموعات الست، إدارة الطلاب بالأزرار، والتقييد الآلي)
             </span>
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleShowAdminStudentsList}
+              className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded-lg cursor-pointer text-xs font-bold transition-all shadow-xs"
+            >
+              <Users className="w-3.5 h-3.5 text-emerald-200" />
+              <span>إدارة الطلاب بالأزرار الفعالة</span>
+            </button>
+
             <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-lg">
               <span className="text-stone-500 pr-1 text-[11px]">كود الطالب:</span>
               <span className="font-mono font-bold text-[#105C3B] bg-white px-2 py-0.5 rounded shadow-2xs">

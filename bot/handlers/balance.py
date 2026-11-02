@@ -5,7 +5,7 @@ Displays immutable financial ledger entries.
 
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from bot.locales.i18n import t
 from bot.services.user_service import user_service
 from bot.services.ledger_service import ledger_service
@@ -49,3 +49,25 @@ async def handle_balance_inquiry(message: Message):
             text += f"\n{t('transaction_row', lang, date=date_short, change=change_value, reason=tx['reason'], after=tx['balance_after'])}"
 
     await message.answer(text, parse_mode="Markdown")
+
+
+@router.callback_query(F.data == "req_loan")
+async def handle_request_loan(callback: CallbackQuery):
+    from bot.services.loan_service import loan_service
+    user_id = callback.from_user.id
+    lang = user_service.get_user_language(user_id)
+
+    success = loan_service.give_loan(user_id, amount=15)
+    if success:
+        # Restore permissions in groups
+        await loan_service.sync_group_status(callback.bot, user_id)
+        bal = ledger_service.get_balance(user_id)["current_minutes"]
+        await callback.message.edit_text(
+            f"✅ *تمت الموافقة على السلفة الطارئة (15 دقيقة)!*\n\n"
+            f"🟢 رصيدك الحالي أصبح: *{bal} دقيقة*.\n"
+            "تم فك الكتم واستعادة إمكانية المشاركة في حلقتك.\n"
+            "⚠️ سيتم استقطاع السلفة تلقائياً عند أول عملية شحن رصيد.",
+            parse_mode="Markdown"
+        )
+    else:
+        await callback.answer(t("loan_already_active", lang), show_alert=True)
