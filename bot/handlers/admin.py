@@ -1,5 +1,6 @@
 """
 Supervisor & Admin Panel Handler - STRICT RBAC & FSM Protection
+Includes: Student Management, Registrations, Payments, Balance Adjustments, Session Deductions, and Role Promotion.
 """
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -13,13 +14,11 @@ from bot.services.group_service import group_service
 
 router = Router(name="admin_router")
 
-# --- حالات FSM الخاصة بالمشرف ---
+# ==========================================
+# حالات FSM الخاصة بالمشرف
+# ==========================================
 class AdminStates(StatesGroup):
-    # حالات التسجيل
     reg_reject_reason = State()
-    # حالات الخصم
-    deduct_custom_amount = State()
-    # حالات الإضافة
     add_balance_amount = State()
     add_balance_reason = State()
 
@@ -73,10 +72,10 @@ async def show_pending_registrations(callback: CallbackQuery):
     reg = regs[0]
     text = (
         f"📝 *طلب تسجيل جديد*\n\n"
-        f"👤 الاسم: {reg['full_name']}\n"
-        f"🎂 العمر: {reg['age']}\n"
-        f"🌍 الدولة: {reg['country']}\n"
-        f"📖 البرنامج: {reg['program_id']}\n"
+        f"👤 الاسم: {reg.get('full_name', 'غير محدد')}\n"
+        f"🎂 العمر: {reg.get('age', 'غير محدد')}\n"
+        f"🌍 الدولة: {reg.get('country', 'غير محدد')}\n"
+        f"📖 البرنامج: {reg.get('program_id', 'غير محدد')}\n"
     )
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -126,17 +125,17 @@ async def reject_registration_end(message: Message, state: FSMContext):
     await state.clear()
 
 # ==========================================
-# 3. إدارة الطلاب (بحث بسيط كبداية)
+# 3. إدارة الطلاب (بحث وملف)
 # ==========================================
 @router.callback_query(F.data == "adm_search_student")
-async def search_student_prompt(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("🔍 يرجى إرسال (رقم الـ ID) أو (رقم الهاتف) أو (اسم الطالب) للبحث:")
-    # يجب إضافة حالة FSM للبحث هنا، لتجنب تداخل الرسائل
+async def search_student_prompt(callback: CallbackQuery):
+    # (للتجربة) يرجى إرسال رقم ID الطالب للبحث عنه
+    await callback.message.edit_text("🔍 يرجى إرسال (رقم ID) الطالب للبحث عنه:")
     await callback.answer()
 
-# دالة وهمية لفتح ملف الطالب بعد البحث
+# دالة عرض ملف الطالب (يجب استدعاؤها بعد البحث)
 async def show_student_profile(message: Message, student_id: str):
-    student = user_service.get_user(student_id)
+    student = user_service.get_user(int(student_id))
     if not student:
         await message.answer("❌ لم يتم العثور على الطالب.")
         return
@@ -145,18 +144,56 @@ async def show_student_profile(message: Message, student_id: str):
     
     text = (
         f"👤 *ملف الطالب*\n\n"
-        f"الاسم: {student['first_name']}\n"
+        f"الاسم: {student.get('first_name', 'غير محدد')}\n"
         f"الآي دي: `{student_id}`\n"
-        f"الرصيد الحالي: *{bal['current_minutes']} دقيقة*\n"
+        f"الرصيد الحالي: *{bal.get('current_minutes', 0)} دقيقة*\n"
     )
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⏱ خصم دقائق", callback_data=f"adm_deduct:{student_id}"),
          InlineKeyboardButton(text="🎁 إضافة رصيد", callback_data=f"adm_add:{student_id}")],
+        [InlineKeyboardButton(text="👨‍🏫 ترقية إلى معلم", callback_data=f"adm_promote_teacher:{student_id}")],
+        [InlineKeyboardButton(text="🛡 ترقية إلى مشرف", callback_data=f"adm_promote_supervisor:{student_id}")],
         [InlineKeyboardButton(text="❄️ تجميد الحساب", callback_data=f"adm_freeze:{student_id}")],
         [InlineKeyboardButton(text="🔙 رجوع", callback_data="adm_menu_back")]
     ])
     await message.answer(text, parse_mode="Markdown", reply_markup=kb)
+
+# --- ترقية إلى معلم ---
+@router.callback_query(F.data.startswith("adm_promote_teacher:"))
+async def promote_to_teacher(callback: CallbackQuery):
+    student_id = callback.data.split(":")[1]
+    admin_id = callback.from_user.id
+    
+    # المدير العام فقط هو من يملك صلاحية الترقية
+    if not user_service.is_super_admin(admin_id):
+        await callback.answer("⛔ فقط المدير العام يمكنه ترقية المعلمين.", show_alert=True)
+        return
+        
+    success = user_service.assign_role(int(student_id), "teacher", admin_id)
+    if success:
+        await callback.message.edit_text("✅ تمت ترقية المستخدم إلى رتبة (معلم) بنجاح.")
+    else:
+        await callback.message.edit_text("⚠️ حدث خطأ في الترقية.")
+    await callback.answer()
+
+# --- ترقية إلى مشرف عادي ---
+@router.callback_query(F.data.startswith("adm_promote_supervisor:"))
+async def promote_to_supervisor(callback: CallbackQuery):
+    student_id = callback.data.split(":")[1]
+    admin_id = callback.from_user.id
+    
+    # المدير العام فقط هو من يملك صلاحية الترقية إلى مشرف
+    if not user_service.is_super_admin(admin_id):
+        await callback.answer("⛔ فقط المدير العام يمكنه ترقية المشرفين.", show_alert=True)
+        return
+        
+    success = user_service.assign_role(int(student_id), "supervisor", admin_id)
+    if success:
+        await callback.message.edit_text("✅ تمت ترقية المستخدم إلى رتبة (مشرف) بنجاح.")
+    else:
+        await callback.message.edit_text("⚠️ حدث خطأ في الترقية.")
+    await callback.answer()
 
 # ==========================================
 # 4. خصم دقائق الجلسة (مع تأكيد)
@@ -170,7 +207,6 @@ async def select_session_duration(callback: CallbackQuery):
          InlineKeyboardButton(text="30 دقيقة", callback_data=f"adm_ded_conf:{student_id}:30")],
         [InlineKeyboardButton(text="45 دقيقة", callback_data=f"adm_ded_conf:{student_id}:45"),
          InlineKeyboardButton(text="60 دقيقة", callback_data=f"adm_ded_conf:{student_id}:60")],
-        [InlineKeyboardButton(text="مدة مخصصة", callback_data=f"adm_ded_custom:{student_id}")],
         [InlineKeyboardButton(text="🔙 إلغاء", callback_data="adm_menu_back")]
     ])
     
@@ -182,9 +218,8 @@ async def confirm_deduction(callback: CallbackQuery):
     _, student_id, minutes = callback.data.split(":")
     minutes = int(minutes)
     
-    # جلب الرصيد الحالي للتحقق
     bal = ledger_service.get_balance(student_id)
-    current_bal = bal['current_minutes']
+    current_bal = bal.get('current_minutes', 0)
     
     if current_bal < minutes:
         await callback.answer(f"⚠️ رصيد الطالب ({current_bal}) أقل من المدة المطلوبة!", show_alert=True)
@@ -211,8 +246,6 @@ async def execute_deduction(callback: CallbackQuery):
     minutes = int(minutes)
     admin_id = callback.from_user.id
     
-    # تنفيذ الخصم في قاعدة البيانات باستخدام ledger_service
-    # (يجب أن يقوم هذا الدالة بإنشاء حركة مالية وخصم الرصيد بأمان)
     res = ledger_service.deduct_balance(student_id, minutes, admin_id, reason="Recitation Session")
     
     if res.success:
@@ -255,7 +288,6 @@ async def add_balance_exec_step(message: Message, state: FSMContext):
     minutes = data['add_minutes']
     admin_id = message.from_user.id
     
-    # تنفيذ الإضافة
     res = ledger_service.add_balance(student_id, minutes, admin_id, reason=reason)
     
     if res.success:
@@ -265,7 +297,6 @@ async def add_balance_exec_step(message: Message, state: FSMContext):
             f"الرصيد الحالي: *{res.balance_after}* دقيقة.",
             parse_mode="Markdown"
         )
-        # إرسال إشعار للطالب هنا
     else:
         await message.answer(f"⚠️ فشلت العملية: {res.message}")
         
@@ -277,6 +308,5 @@ async def add_balance_exec_step(message: Message, state: FSMContext):
 @router.callback_query(F.data == "adm_menu_back")
 async def back_to_admin_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    # إعادة توجيه إلى دالة القائمة الرئيسية
     await handle_admin_panel(callback.message)
     await callback.answer()
