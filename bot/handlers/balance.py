@@ -42,6 +42,10 @@ async def handle_balance_inquiry(message: Message):
         for tx in history[-5:]:  # show latest 5
             sign = "+" if tx["minutes_change"] > 0 else ""
             date_short = tx.get("created_at", "")[:10]
-            text += f"\n{t('transaction_row', lang, date=date_short, change=f'{sign}{tx[\"minutes_change\"]}', reason=tx['reason'], after=tx['balance_after'])}"
+            
+            # إصلاح الخطأ هنا: فصل المتغير لتجنب تداخل علامات الاقتباس
+            change_value = f"{sign}{tx['minutes_change']}"
+            
+            text += f"\n{t('transaction_row', lang, date=date_short, change=change_value, reason=tx['reason'], after=tx['balance_after'])}"
 
     await message.answer(text, parse_mode="Markdown")
