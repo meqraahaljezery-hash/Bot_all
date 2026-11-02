@@ -99,4 +99,6 @@
 
   "error_generic": "An unexpected error occurred. Please try again or contact support.",
   "operation_cancelled": "Operation cancelled. Returned to main menu."
+,
+"low_balance_alert": "⚠️ Alert: Your balance is only {balance} minutes.\nPlease recharge to avoid being muted in the group."
 }
