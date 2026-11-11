@@ -1,41 +1,40 @@
-2026-11-11T10:41:31.263197315Z ==> Cloning from https://github.com/meqraahaljezery-hash/bot600
-2026-11-11T10:41:37.350200416Z ==> Checking out commit 3c046998298588680b9b0869b99076a0dc5bca1e in branch main
-2026-11-11T10:41:38.351627854Z ==> Using Node.js version 24.22.1 (default)
-2026-11-11T10:41:38.351631483Z ==> Docs on specifying a Node.js version: https://render.com/docs/node-version
-2026-11-11T10:41:38.397843111Z ==> Using Bun version 1.4.4 (default)
-2026-11-11T10:41:38.397855201Z ==> Docs on specifying a Bun version: https://render.com/docs/bun-version
-2026-11-11T10:41:38.421138995Z ==> Running build command 'npm install'...
-2026-11-11T10:41:51.277752823Z npm error code ERESOLVE
-2026-11-11T10:41:51.277864797Z npm error ERESOLVE could not resolve
-2026-11-11T10:41:51.277881325Z npm error
-2026-11-11T10:41:51.279549715Z npm error Found: esbuild@0.25.12
-2026-11-11T10:41:51.279554553Z npm error node_modules/esbuild
-2026-11-11T10:41:51.279558169Z npm error   dev esbuild@"^0.25.0" from the root project
-2026-11-11T10:41:51.279559827Z npm error
-2026-11-11T10:41:51.279561193Z npm error Could not resolve dependency:
-2026-11-11T10:41:51.279562833Z npm error peerOptional esbuild@"^0.27.0 || ^0.28.0" from vite@8.3.8
-2026-11-11T10:41:51.279564197Z npm error node_modules/vite
-2026-11-11T10:41:51.279565453Z npm error   vite@"^8.3.0" from the root project
-2026-11-11T10:41:51.279566699Z npm error   peer vite@"^5.2.0 || ^6 || ^7 || ^8" from @tailwindcss/vite@4.3.5
-2026-11-11T10:41:51.279567918Z npm error   node_modules/@tailwindcss/vite
-2026-11-11T10:41:51.279569347Z npm error     @tailwindcss/vite@"^4.3.3" from the root project
-2026-11-11T10:41:51.279570624Z npm error   2 more (@vitejs/plugin-react, vite-plugin-pwa)
-2026-11-11T10:41:51.279571795Z npm error
-2026-11-11T10:41:51.279573022Z npm error Conflicting peer dependency: esbuild@0.28.2
-2026-11-11T10:41:51.279574205Z npm error node_modules/tsx/node_modules/esbuild
-2026-11-11T10:41:51.279575552Z npm error   peerOptional esbuild@"^0.27.0 || ^0.28.0" from vite@8.3.8
-2026-11-11T10:41:51.279576828Z npm error   node_modules/vite
-2026-11-11T10:41:51.279578049Z npm error     vite@"^8.3.0" from the root project
-2026-11-11T10:41:51.279579373Z npm error     peer vite@"^5.2.0 || ^6 || ^7 || ^8" from @tailwindcss/vite@4.3.5
-2026-11-11T10:41:51.279580588Z npm error     node_modules/@tailwindcss/vite
-2026-11-11T10:41:51.279581809Z npm error       @tailwindcss/vite@"^4.3.3" from the root project
-2026-11-11T10:41:51.27958303Z npm error     2 more (@vitejs/plugin-react, vite-plugin-pwa)
-2026-11-11T10:41:51.279584192Z npm error
-2026-11-11T10:41:51.27958657Z npm error Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.
-2026-11-11T10:41:51.279660203Z npm error
-2026-11-11T10:41:51.279668731Z npm error
-2026-11-11T10:41:51.279670712Z npm error For a full report see:
-2026-11-11T10:41:51.279672596Z npm error /opt/render/.cache/_logs/2026-11-11T10_41_38_522Z-eresolve-report.txt
-2026-11-11T10:41:51.281462336Z npm error A complete log of this run can be found in: /opt/render/.cache/_logs/2026-11-11T10_41_38_522Z-debug-0.log
-2026-11-11T10:41:51.341825989Z ==> Build failed 😞
-2026-11-11T10:41:51.341837925Z ==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "recharts": "^3.10.1",
+    "vite": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.27.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2",
+    "@types/express": "^4.17.21"
+  },
+  "overrides": {
+    "esbuild": "^0.27.0"
+  }
+}
